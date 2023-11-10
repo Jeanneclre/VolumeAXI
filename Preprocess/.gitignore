@@ -1,4 +1,7 @@
 K9_impaction_DATA_Goodname/
-Resampled/
+Output/
 patient_to_path.csv
 patient_to_path3.csv
+
+__pycache__/
+.cache/

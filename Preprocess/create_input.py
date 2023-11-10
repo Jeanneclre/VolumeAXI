@@ -22,6 +22,8 @@ def convert_xlsx_to_csv(filename,out_dir):
     input: filename
     output: csv file
     '''
+    
+
     outputfilename = os.path.basename(filename).split('.')[0] + ".csv"
     outname = os.path.join(out_dir, outputfilename)
     read_file = pd.read_excel(filename) 
@@ -32,12 +34,16 @@ def convert_xlsx_to_csv(filename,out_dir):
     
     df = pd.DataFrame(pd.read_csv(outname)) 
 
+    if args.augm:
+        # copy and paste in new rows each row of the filename
+        df= pd.concat([df,df],ignore_index=True)
+
     return df, outname
 
 def find_path(directory_path:str,side_list:list):
     '''
     Function to find the path of all the files with the side_list in the directory
-    input: directory_path (str), side_list (list)
+    input: directory_path (str), side_list ['Bilateral', 'Left', 'Right'] (list)
     output: list of the path of the files
     '''
     arguments=[]
@@ -51,22 +57,23 @@ def find_path(directory_path:str,side_list:list):
       
     result = {}  # Initialize an empty dictionary
     
+    
+
+    files_matching_key = [] # empty list 'files_matching_key' to store the file paths that end with the current 'key'
+
     for key in arguments:
-
-        files_matching_key = [] # empty list 'files_matching_key' to store the file paths that end with the current 'key'
-
         if os.path.isdir(directory_path):
             # Use 'glob.iglob' to find all file paths ending with the current 'key' in the 'path' directory
             # and store the generator object returned by 'glob.iglob' in a variable 'files_generator'
             
             files_list = glob.iglob(os.path.join(directory_path,'**', '*'),recursive=True)
-            for i in files_list:
+            for file in files_list:
                 # check if the k is in the file path
                 # and if the file extension is .nii.gz
-                if key in i and i.endswith('.nii.gz') :
-                    # If the file path ends with the current 'key', append it to the 'files_matching_key' list
-                    files_matching_key.append(i)
-        
+                
+                if key in file and file.endswith('.nii.gz') :
+                    files_matching_key.append(file)
+            
         # Assign the resulting list to the 'key' in the 'result' dictionary
         result[key] = files_matching_key
 
@@ -100,9 +107,15 @@ def add_path(filename:str,dataframe, path_dict:dict, scans_side:list):
     patient_to_path = {}
     patient_to_path3 = {}
     idx =0
+    # create column 'Path' and 'Path3' in the dataframe
+    dataframe['Path'] = None
+    dataframe['Path3'] = None
+
+
+    
     for side, paths in path_dict.items():
         for path in paths:
-               
+                idx_alreadypresent = False
                 if resolution in os.path.basename(path):
                     # Assuming the filename structure as "Clinician_patientName_scan_orientation.nii.gz"
                     if side in path:
@@ -117,12 +130,15 @@ def add_path(filename:str,dataframe, path_dict:dict, scans_side:list):
                         # convert row['Side'] to a string
                         row['Side'] = str(row['Side'])
                         if side in row['Side'] and patientName in row['Patient'] :
-                            dataframe.loc[index,'Path'] = path
+                            if row['Path'] == None and idx_alreadypresent == False:
+                                dataframe.loc[index,'Path'] = path
+                                idx_alreadypresent = True
                             
                         else :
                             continue
                    
                 else: 
+        
                     # Assuming the filename structure as "Clinician_patientName_scan_orientation.nii.gz"
                     if side in path:
                         if "IC" not in path:
@@ -136,7 +152,10 @@ def add_path(filename:str,dataframe, path_dict:dict, scans_side:list):
                         # convert row['Side'] to a string
                         row['Side'] = str(row['Side'])
                         if side in row['Side'] and patientName in row['Patient'] :
-                            dataframe.loc[index,'Path3'] = path
+                            if row['Path3'] == None and idx_alreadypresent == False:
+                                dataframe.loc[index,'Path3'] = path
+                                idx_alreadypresent = True
+                            
                         else :
                             continue
         idx+=1
@@ -247,6 +266,8 @@ if __name__ == "__main__":
     parser.add_argument('--filename',help='name of the xlsx file with the data',type=str,default='./')
     parser.add_argument('--out_dir',help='directory where the output files are stored',type=str,default='./output')
     parser.add_argument('--side',help='list with all the side of the scan possible',type=int,default=['Left','Right','Bilateral'])
+    parser.add_argument('--augm',help='if you transformed your data to augment the dataset',type=bool,default=True)
+    parser.add_argument('--augm_key',help='keyword to recognize the transformed datas',type=str,default='Rotated')
     args = parser.parse_args() 
     main_input(args)
 

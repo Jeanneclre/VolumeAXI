@@ -35,13 +35,13 @@ def rotation_ITK(filename:str,out:str,args):
 
 def main_rotation(args):
     filenames= []
-    out_dir = args.output_dir
-    normpath = os.path.normpath("/".join([args.input_dir, '**', '*']))
+    out_dir = args.out
+    normpath = os.path.normpath("/".join([args.dir, '**', '*']))
     for img in glob.iglob(normpath, recursive=True):
         if os.path.isfile(img) and True in [ext in img for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png"]]:
             fobj = {}
             fobj["img"] = img
-            fobj["out"] = os.path.normpath(out_dir + "/" + img.replace(args.input_dir, ''))
+            fobj["out"] = os.path.normpath(out_dir + "/" + img.replace(args.dir, ''))
         
             if not os.path.exists(os.path.dirname(fobj["out"])):
                 os.makedirs(os.path.dirname(fobj["out"]))
@@ -55,8 +55,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Rotate an image', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     file_group = parser.add_argument_group('File parameters')
-    file_group.add_argument('--input_dir', type=str, help='Input directory')
-    file_group.add_argument('--output_dir', type=str, help='Output directory')
+    file_group.add_argument('--dir', type=str, help='Input directory')
+    file_group.add_argument('--out', type=str, help='Output directory')
 
     param_group = parser.add_argument_group('Rotation parameters')
     param_group.add_argument('--angle', type=float, help='Angle of rotation', default=90)
