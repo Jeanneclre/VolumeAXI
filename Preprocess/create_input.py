@@ -16,7 +16,7 @@ import argparse
 # Convert it into a csv file without the header and then add the path 
 # of the file corresponding to the patient name 
 
-def convert_xlsx_to_csv(filename,out_dir):
+def convert_xlsx_to_csv(filename,out_dir,augm):
     '''
     Function to convert xlsx to csv
     input: filename
@@ -33,8 +33,8 @@ def convert_xlsx_to_csv(filename,out_dir):
                     header=True) 
     
     df = pd.DataFrame(pd.read_csv(outname)) 
-
-    if args.augm:
+   
+    if augm:
         # copy and paste in new rows each row of the filename
         df= pd.concat([df,df],ignore_index=True)
 
@@ -183,18 +183,18 @@ def get_data_image(filename:str,df):
     # add column to the csv file with these informations
     # df = pd.read_csv(filename)
     for index, row in df.iterrows():
-        path = row['Path3']
+        path = row['Path']
         #verify if the path is not empty 
         if type(path) is not str:
             #add column to the csv file
-            df.loc[index,'Size_x'] = 'Nan'
-            df.loc[index,'Size_y'] = 'Nan'
-            df.loc[index,'Size_z'] = 'Nan'
+            df.loc[index,'Size_x 1'] = 'Nan'
+            df.loc[index,'Size_y 1'] = 'Nan'
+            df.loc[index,'Size_z 1'] = 'Nan'
 
             df.loc[index,'Origin'] = 'Nan'
-            df.loc[index,'Spacing_x'] = 'Nan'
-            df.loc[index,'Spacing_y'] = 'Nan'
-            df.loc[index,'Spacing_z'] = 'Nan'
+            df.loc[index,'Spacing_x 1'] = 'Nan'
+            df.loc[index,'Spacing_y 1'] = 'Nan'
+            df.loc[index,'Spacing_z 1'] = 'Nan'
             
             df.to_csv(filename, index=False)
             
@@ -214,22 +214,22 @@ def get_data_image(filename:str,df):
 
             origin = str(origin)
 
-            spacing_x = str(spacing[0])
-            spacing_y = str(spacing[1])
-            spacing_z = str(spacing[2])
+            spacing_x = str(round(spacing[0],2))
+            spacing_y = str(round(spacing[1],2))
+            spacing_z = str(round(spacing[2],2))
 
             direction = str(direction)
 
             #add column to the csv file
-            df.loc[index,'Size_x 0-3'] = size_x
-            df.loc[index,'Size_y 0-3'] = size_y
-            df.loc[index,'Size_z 0-3'] = size_z
+            df.loc[index,'Size_x 1'] = size_x
+            df.loc[index,'Size_y 1'] = size_y
+            df.loc[index,'Size_z 1'] = size_z
 
-            df.loc[index,'Origin 0-3'] = origin
+            df.loc[index,'Origin 1'] = origin
             
-            df.loc[index,'Spacing_x 0-3'] = spacing_x
-            df.loc[index,'Spacing_y 0-3'] = spacing_y
-            df.loc[index,'Spacing_z 0-3'] = spacing_z
+            df.loc[index,'Spacing_x 1'] = spacing_x
+            df.loc[index,'Spacing_y 1'] = spacing_y
+            df.loc[index,'Spacing_z 1'] = spacing_z
             
             df.to_csv(filename, index=False)
 
@@ -240,6 +240,7 @@ def main_input(args):
     filename = args.filename
     side_of_scans = args.side
     out_directory = args.out_dir
+    augmentation = args.augm
 
 
     if not os.path.exists(out_directory):
@@ -247,7 +248,7 @@ def main_input(args):
 
     # if the file is a xlsx file, convert it to csv
     if filename.endswith('.xlsx'):
-        df, outputFilename = convert_xlsx_to_csv(filename,out_directory)
+        df, outputFilename = convert_xlsx_to_csv(filename,out_directory,augmentation)
     elif filename.endswith('.csv'):
         df = pd.read_csv(filename)
         outputFilename = filename
@@ -266,7 +267,7 @@ if __name__ == "__main__":
     parser.add_argument('--filename',help='name of the xlsx file with the data',type=str,default='./')
     parser.add_argument('--out_dir',help='directory where the output files are stored',type=str,default='./output')
     parser.add_argument('--side',help='list with all the side of the scan possible',type=int,default=['Left','Right','Bilateral'])
-    parser.add_argument('--augm',help='if you transformed your data to augment the dataset',type=bool,default=True)
+    parser.add_argument('--augm',help='if you transformed your data to augment the dataset',type=bool,default=False)
     parser.add_argument('--augm_key',help='keyword to recognize the transformed datas',type=str,default='Rotated')
     args = parser.parse_args() 
     main_input(args)
