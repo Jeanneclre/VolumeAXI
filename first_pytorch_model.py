@@ -27,8 +27,7 @@ class CustomImageDataset(Dataset):
 
         image = torch.tensor(sitk.GetArrayFromImage(sitk.ReadImage(img_path)))
         label = torch.tensor(self.img_labels.iloc[idx, 5])
-        
-        
+
         if self.transform:
             image = self.transform(image)
         if self.target_transform:
@@ -189,7 +188,7 @@ xlist= [x,x1,x2,x3,x4]
 ylist= [y,y1,y2,y3,y4]
 with torch.no_grad():
     for i in range(len(xlist)):
-        
+
         x_elem = xlist[i].to(torch.float32).to(device)
         pred = model(x_elem)
         predicted, actual = classes[pred[0].argmax(0)], classes[ylist[i]]

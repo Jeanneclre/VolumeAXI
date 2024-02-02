@@ -16,7 +16,7 @@ import pytorch_lightning as pl
 class CleftDataset(Dataset):
     def __init__(self, df, mount_point = "./", img_column='img', class_column='Classification', transform=None):
         self.df = df
-        
+
 
         self.mount_point = mount_point
         self.transform = transform
@@ -27,23 +27,24 @@ class CleftDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        
+
         # df_filtered = self.df.dropna(subset=[self.class_column])
         # df_filtered.reset_index(drop=True)
 
         row = self.df.loc[idx]
-        # row = df_filtered.loc[idx]
-       
+
+        # print('*********idx***********',idx)
+
         img = sitk.GetArrayFromImage(sitk.ReadImage(os.path.join(self.mount_point, row[self.img_column])))
 
         if self.transform:
             img = self.transform(img)
-        
+
         cl = int(row[self.class_column])
 
         return img, torch.tensor(cl, dtype=torch.long)
 
-    
+
 class CleftDataModule(pl.LightningDataModule):
     def __init__(self, df_train, df_val, df_test, mount_point="./", batch_size=32, num_workers=4, img_column='img_path', class_column='Classification', train_transform=None, valid_transform=None, test_transform=None, drop_last=False):
         super().__init__()
@@ -91,7 +92,7 @@ class CleftSegDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        
+
         row = self.df.loc[idx]
         img = sitk.GetArrayFromImage(sitk.ReadImage(os.path.join(self.mount_point, row[self.img_column])))
 
@@ -103,10 +104,10 @@ class CleftSegDataset(Dataset):
             seg = obj["seg"]
 
         cl = row[self.class_column]
-        
+
         return img, seg, torch.tensor(cl, dtype=torch.long)
 
-    
+
 class CleftSegDataModule(pl.LightningDataModule):
     def __init__(self, df_train, df_val, df_test, mount_point="./", batch_size=32, num_workers=4, img_column='img_path', class_column='Classification', seg_column='seg', train_transform=None, valid_transform=None, test_transform=None, drop_last=False):
         super().__init__()

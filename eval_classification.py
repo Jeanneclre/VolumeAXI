@@ -29,12 +29,12 @@ parser.add_argument('--title', type=str, help='Title for the image', default="Co
 
 args = parser.parse_args()
 
-y_true_arr = [] 
+y_true_arr = []
 y_pred_arr = []
 
-if(os.path.splitext(args.csv)[1] == ".csv"):        
+if(os.path.splitext(args.csv)[1] == ".csv"):
     df = pd.read_csv(args.csv)
-else:        
+else:
     df = pd.read_parquet(args.csv)
 
 class_names = pd.unique(df[args.csv_true_column])
@@ -93,7 +93,7 @@ fig2 = plt.figure()
 cm = plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, title=args.title + ' - normalized')
 
 # cnf_matrix = np.array(cnf_matrix)
-# FP = cnf_matrix.sum(axis=0) - np.diag(cnf_matrix)  
+# FP = cnf_matrix.sum(axis=0) - np.diag(cnf_matrix)
 # FN = cnf_matrix.sum(axis=1) - np.diag(cnf_matrix)
 # TP = np.diag(cnf_matrix)
 # TN = cnf_matrix.values.sum() - (FP + FN + TP)
@@ -101,7 +101,7 @@ cm = plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, titl
 # # Sensitivity, hit rate, recall, or true positive rate
 # TPR = TP/(TP+FN)
 # # Specificity or true negative rate
-# TNR = TN/(TN+FP) 
+# TNR = TN/(TN+FP)
 # # Precision or positive predictive value
 # PPV = TP/(TP+FP)
 # # Negative predictive value

@@ -10,7 +10,8 @@ class CleftImageLogger(Callback):
         
         if batch_idx % self.log_steps == 0:
             x, y = batch
-
+            
+            print('X shape logger',x.shape)
             x = torch.permute(x[0], (1, 0, 2, 3)) # get the first image in the batch and permute the channels dimension with i dimension, leave j, k dimensions. 
             x = x - torch.min(x)
             x = x/torch.max(x)

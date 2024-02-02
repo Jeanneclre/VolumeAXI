@@ -28,11 +28,11 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
     bar = fill * filled_length + '-' * (length - filled_length)
     sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
     sys.stdout.flush()  # Flushes the buffer
-    if iteration == total: 
+    if iteration == total:
         print()  # Print New Line on Complete
 
 def resample_fn(img, output_spacing,args):
-    output_size = args.size 
+    output_size = args.size
     fit_spacing = args.fit_spacing
     iso_spacing = args.iso_spacing
     pixel_dimension = args.pixel_dimension
@@ -49,7 +49,7 @@ def resample_fn(img, output_spacing,args):
         InterpolatorType = sitk.sitkNearestNeighbor
 
 
-    spacing = img.GetSpacing()  
+    spacing = img.GetSpacing()
     size = img.GetSize()
 
     output_origin = img.GetOrigin()
@@ -87,13 +87,13 @@ def resample_fn(img, output_spacing,args):
     print("Output origin:", output_origin)
 
     resampleImageFilter = sitk.ResampleImageFilter()
-    resampleImageFilter.SetInterpolator(InterpolatorType)   
+    resampleImageFilter.SetInterpolator(InterpolatorType)
     resampleImageFilter.SetOutputSpacing(output_spacing)
     resampleImageFilter.SetSize(output_size)
     resampleImageFilter.SetOutputDirection(img.GetDirection())
     resampleImageFilter.SetOutputOrigin(output_origin)
     # resampleImageFilter.SetDefaultPixelValue(zeroPixel)
-    
+
 
     return resampleImageFilter.Execute(img)
 
@@ -119,23 +119,23 @@ def AddSpacing(img_filename:str, output_spacing:list, output_spacing3:list, args
             output_spacing.append(new_spacing)
         else:
             output_spacing.append(spacing)
-        
+
     else:
         if(fit_spacing):
             output_spacing3.append([sp*si/o_si for sp, si, o_si in zip(spacing, size, output_size)])
         else:
             output_spacing3.append(spacing)
-    
+
     return output_spacing, output_spacing3
 
 def operationSpacing(output_spacing, args):
-    spacing_wMax= False 
-    
+    spacing_wMax= False
+
     if (spacing_wMax):
-    # output_spacing_filtered = [sp for si, sp in zip(args.size, output_spacing) if si != -1] 
+    # output_spacing_filtered = [sp for si, sp in zip(args.size, output_spacing) if si != -1]
     # print('output spacing filtered',output_spacing_filtered)
         operation_spacing = np.max(output_spacing)
-    
+
     else:
         #calculate the mean spacing
         operation_spacing = [sum(x)/len(output_spacing) for x in zip(*output_spacing)]
@@ -143,12 +143,12 @@ def operationSpacing(output_spacing, args):
         operation_spacing = np.max(operation_spacing)
 
     output_spacing = [sp if si == -1 else round(operation_spacing,3) for si, sp in zip(args.size, output_spacing)]
-    
+
     return output_spacing
 
 def Resample(img_filename,output_spacing, args):
 
-    print("Reading:", img_filename) 
+    print("Reading:", img_filename)
     img = sitk.ReadImage(img_filename)
 
     return resample_fn(img, output_spacing, args)
@@ -236,11 +236,11 @@ def main_resample(args):
         time.sleep(0.01)
         if idx%10 == 0:
             print_progress_bar(idx, len(filenames), prefix='Progress:', suffix='Complete ', length=50)
-  
+
     if (args.iso_spacing):
-        output_spacing = operationSpacing(output_spacing_list, args)  
+        output_spacing = operationSpacing(output_spacing_list, args)
         output_spacing_other = operationSpacing(output_spacing_other_list, args)
-    
+
     for fobj in filenames:
         try:
 
@@ -262,7 +262,7 @@ def main_resample(args):
             writer.SetFileName(fobj["out"])
             writer.UseCompressionOn()
             writer.Execute(img)
-            
+
         except Exception as e:
             print(e, file=sys.stderr)
 
@@ -298,7 +298,7 @@ if __name__ == "__main__":
 
     img_group = parser.add_argument_group('Image parameters')
     img_group.add_argument('--suffix_res', type=str,help='Suffix saying the resolution of the input image. Can only process with 2 different resolution', default='sp1')
-    img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=2)
+    img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=3)
     img_group.add_argument('--pixel_dimension', type=int, help='Pixel dimension', default=1)
     img_group.add_argument('--rgb', type=bool, help='Use RGB type pixel', default=False)
 

@@ -16,13 +16,13 @@ from pl_bolts.transforms.dataset_normalizations import (
 )
 
 import monai
-from monai.transforms import (    
+from monai.transforms import (
     EnsureChannelFirst,
-    Compose,    
+    Compose,
     RandFlip,
     RandRotate,
     SpatialPad,
-    RandSpatialCrop, 
+    RandSpatialCrop,
     CenterSpatialCrop,
     ScaleIntensityRange,
     ScaleIntensity,
@@ -31,11 +31,11 @@ from monai.transforms import (
     RandGaussianNoise,
     RandGaussianSmooth,
     ToTensor,
-    EnsureChannelFirstd,    
+    EnsureChannelFirstd,
     RandFlipd,
     RandRotated,
     SpatialPadd,
-    RandSpatialCropd, 
+    RandSpatialCropd,
     CenterSpatialCropd,
     ScaleIntensityRanged,
     ScaleIntensityd,
@@ -49,7 +49,7 @@ from monai.transforms import (
 
 
 ### TRANSFORMS
-class SaltAndPepper:    
+class SaltAndPepper:
     def __init__(self, prob=0.2):
         self.prob = prob
     def __call__(self, x):
@@ -83,13 +83,13 @@ class NoEvalTransform:
     def __call__(self, inp):
         transformed_inp = self.test_transform(inp)
         return transformed_inp
-    
+
 class CleftTrainTransforms:
     def __init__(self, size=128, pad=32):
-        # image augmentation functions        
+        # image augmentation functions
         self.train_transform = Compose(
             [
-                EnsureChannelFirst(channel_dim='no_channel'),                
+                EnsureChannelFirst(channel_dim='no_channel'),
                 RandFlip(prob=0.5),
                 RandRotate(prob=0.5, range_x=math.pi, range_y=math.pi, range_z=math.pi, mode="nearest", padding_mode='zeros'),
                 SpatialPad(spatial_size=size+pad ),
@@ -103,32 +103,33 @@ class CleftTrainTransforms:
             ]
         )
 
-        # self.output_dir = output_dir
-        # if not os.path.exists(output_dir):
-        #     os.makedirs(output_dir)
-        
-        # self.csv_path = os.path.join(output_dir, 'train_transformed.csv')
-        # self.csv_data = []
+        self.output_dir = './Output/TransformedImages'
 
-    def __call__(self, inp):
-        
+        self.csv_path = self.output_dir
+        self.csv_data = []
+
+
+    def __call__(self, inp, filename):
+        print('shape inp', inp.shape)
         transformed_inp = self.train_transform(inp)
-      
-        # # output_path = os.path.join(self.output_dir,filename)
-        # print('filename',filename)
-        # filename = 'Preprocess/' + filename
-        # output_path = filename.replace('Preprocess/Output/Resampled','./Output/TransformedImages')
-        # print('output_path',output_path)
+        print('shape transformed_inp', transformed_inp.shape)
 
-        # out_dir = os.path.dirname(output_path)
-        # if not os.path.exists(out_dir):
-        #     os.makedirs(out_dir)
-        # # Convert tensor to SimpleITK image and save
-        # sitk_image = sitk.GetImageFromArray(transformed_inp.numpy())
-        # sitk.WriteImage(sitk_image, output_path)
+        self.csv_datafilename = filename
+        # output_path = os.path.join(self.output_dir,filename)
+        print('filename',self.csv_datafilename)
+        self.csv_datafilename = 'Preprocess/' + self.csv_datafilename
+        output_path = self.csv_datafilename.replace('Preprocess/Output/Resampled','./Output/TransformedImages')
+        print('output_path',output_path)
 
-        # # Record the file path
-        # self.csv_data.append([filename, output_path])
+        out_dir = os.path.dirname(output_path)
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        # Convert tensor to SimpleITK image and save
+        sitk_image = sitk.GetImageFromArray(transformed_inp)
+        sitk.WriteImage(sitk_image, output_path)
+
+        # Record the file path
+        self.csv_data.append([self.csv_datafilename, output_path])
 
         return transformed_inp
 
@@ -151,12 +152,36 @@ class CleftEvalTransforms:
             ]
         )
 
-    def __call__(self, inp):        
+        self.output_dir = './Output/TransformedImages/Eval'
+
+        self.csv_path = self.output_dir
+        self.csv_data = []
+
+
+    def __call__(self, inp, filename):
+        transformed_inp = self.test_transform(inp)
+        self.csv_datafilename = filename
+        # output_path = os.path.join(self.output_dir,filename)
+        print('filename',self.csv_datafilename)
+        self.csv_datafilename = 'Preprocess/' + self.csv_datafilename
+        output_path = self.csv_datafilename.replace('Preprocess/Output/Resampled','./Output/TransformedImages/Eval')
+        print('output_path',output_path)
+
+        out_dir = os.path.dirname(output_path)
+        print('out_dir',out_dir)
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        # Convert tensor to SimpleITK image and save
+        sitk_image = sitk.GetImageFromArray(transformed_inp)
+        sitk.WriteImage(sitk_image, output_path)
+
+        # Record the file path
+        self.csv_data.append([self.csv_datafilename, output_path])
         return self.test_transform(inp)
 
 
 class CleftSegTrainTransforms:
-    def __init__(self, size=128, pad=32):        
+    def __init__(self, size=128, pad=32):
         self.train_transform = Compose(
             [
                 EnsureChannelFirstd(channel_dim='no_channel', keys=['img', 'seg']),
@@ -191,11 +216,11 @@ class CleftSegEvalTransforms:
             ]
         )
 
-    def __call__(self, inp):        
+    def __call__(self, inp):
         return self.test_transform(inp)
 
 
-class GaussianNoise(nn.Module):    
+class GaussianNoise(nn.Module):
     def __init__(self, mean=0.0, std=0.1):
         super(GaussianNoise, self).__init__()
         self.mean = torch.tensor(0.0)

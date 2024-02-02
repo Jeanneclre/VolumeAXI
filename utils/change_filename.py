@@ -30,9 +30,9 @@ def rename_and_copy_files(args):
             src_file_path = os.path.join(root, file)
             dest_file_path = os.path.join(new_dest_path, new_file_name)
             shutil.copy2(src_file_path, dest_file_path)
-         
 
-         
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

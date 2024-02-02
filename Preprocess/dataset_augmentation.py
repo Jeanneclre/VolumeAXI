@@ -42,16 +42,16 @@ def main_rotation(args):
             fobj = {}
             fobj["img"] = img
             fobj["out"] = os.path.normpath(out_dir + "/" + img.replace(args.dir, ''))
-        
+
             if not os.path.exists(os.path.dirname(fobj["out"])):
                 os.makedirs(os.path.dirname(fobj["out"]))
             if not os.path.exists(fobj["out"]):
                 rotation_ITK(fobj["img"],fobj['out'],args)
 
-        
+
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Rotate an image', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     file_group = parser.add_argument_group('File parameters')
@@ -65,6 +65,5 @@ if __name__ == "__main__":
 
     main_rotation(args)
 
-    
 
-    
+

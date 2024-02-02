@@ -44,7 +44,7 @@ if __name__ == "__main__":
     complete_csv = parser.add_argument_group('Completion of the input csv')
     complete_csv.add_argument('--filename',help='name of the xlsx file with the different patients and class to complete',type=str,default='./')
     complete_csv.add_argument('--side',help='list with all the side of the scan possible',type=int,default=['Left','Right','Bilateral'])
-    
+
     args = parser.parse_args()
-    
+
     main(args)

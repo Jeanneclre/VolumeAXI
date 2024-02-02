@@ -33,9 +33,9 @@ def count_classes(csv_file,word_class='Classification',dict_classes={}):
         # Change the name of the classes
         reader.loc[index,word_class] = dict_classes[key_name]
 
-        
+
         reader.to_csv(output_file, index=False)
-    
+
 
     return classes
 

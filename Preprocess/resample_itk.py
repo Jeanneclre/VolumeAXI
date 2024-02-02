@@ -7,7 +7,7 @@ import sys
 import csv
 
 def resample_fn(img, args):
-    output_size = args.size 
+    output_size = args.size
     fit_spacing = args.fit_spacing
     iso_spacing = args.iso_spacing
     pixel_dimension = args.pixel_dimension
@@ -18,7 +18,7 @@ def resample_fn(img, args):
     else:
         InterpolatorType = itk.NearestNeighborInterpolateImageFunction[img, itk.D]
 
-    spacing = img.GetSpacing()  
+    spacing = img.GetSpacing()
     try:
         size = img.GetSize()
     except:
@@ -65,7 +65,7 @@ def resample_fn(img, args):
 
     resampleImageFilter = ResampleType.New()
     interpolator = InterpolatorType.New()
-    
+
     resampleImageFilter.SetOutputSpacing(output_spacing)
     resampleImageFilter.SetOutputOrigin(output_origin)
     resampleImageFilter.SetOutputDirection(img.GetDirection())
@@ -74,13 +74,13 @@ def resample_fn(img, args):
     resampleImageFilter.SetSize(output_size)
     resampleImageFilter.SetInput(img)
     resampleImageFilter.Update()
-    
+
     return resampleImageFilter.GetOutput()
 
 
 def Resample(img_filename, args):
 
-    output_size = args.size 
+    output_size = args.size
     fit_spacing = args.fit_spacing
     iso_spacing = args.iso_spacing
     img_dimension = args.image_dimension
@@ -238,6 +238,6 @@ if __name__ == "__main__":
 
             print("Writing:", fobj["out"])
             writer = itk.imwrite(img, fobj["out"])
-            
+
         except Exception as e:
             print(e, file=sys.stderr)

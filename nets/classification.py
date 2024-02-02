@@ -1,7 +1,7 @@
 import math
 from typing import Optional, Tuple
 
-import numpy as np 
+import numpy as np
 
 import torch
 from torch import Tensor, nn
@@ -70,10 +70,10 @@ class TimeDistributed(nn.Module):
     def __init__(self, module):
         super(TimeDistributed, self).__init__()
         self.module = module
- 
+
     def forward(self, input_seq):
         assert len(input_seq.size()) > 2
- 
+
         # reshape input data --> (samples * timesteps, input_size)
         # squash timesteps
 
@@ -84,9 +84,9 @@ class TimeDistributed(nn.Module):
 
         size_reshape = [batch_size*time_steps] + list(size[2:])
         reshaped_input = input_seq.contiguous().view(size_reshape)
- 
+
         output = self.module(reshaped_input)
-        
+
         output_size = output.size()
         output_size = [batch_size, time_steps] + list(output_size[1:])
         output = output.contiguous().view(output_size)
@@ -95,44 +95,46 @@ class TimeDistributed(nn.Module):
 
 class CleftNet(pl.LightningModule):
     def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", num_classes=3):
-        super(CleftNet, self).__init__()        
-        
-        self.save_hyperparameters()        
+        super(CleftNet, self).__init__()
+
+        self.save_hyperparameters()
         self.args = args
 
         self.class_weights = class_weights
 
         if(class_weights is not None):
             class_weights = torch.tensor(class_weights).to(torch.float32)
-        
+
         self.loss = nn.CrossEntropyLoss(weight=class_weights)
         self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.hparams.num_classes)
 
         if self.hparams.base_encoder == 'SEResNet50':
             self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
-        elif self.hparams.base_encoder == 'resnet18': 
+        elif self.hparams.base_encoder == 'ResNet':#Jeanne
+            self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
+        elif self.hparams.base_encoder == 'resnet18':
             self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
         else:
             self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
 
-        
+
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.args.lr)
         return optimizer
 
     def forward(self, x):
-        
+
         ret =self.model(x)
-        
-        return ret  
+
+        return ret
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
         x = self(x)
 
         loss = self.loss(x, y)
-        
+
         self.log('train_loss', loss)
         self.accuracy(x, y)
         self.log("train_acc", self.accuracy)
@@ -144,7 +146,7 @@ class CleftNet(pl.LightningModule):
         x = self(x)
 
         loss = self.loss(x, y)
-        
+
         self.log('val_loss', loss, sync_dist=True)
         self.accuracy(x, y)
         self.log("val_acc", self.accuracy)
@@ -152,27 +154,27 @@ class CleftNet(pl.LightningModule):
 
 class CleftSegNet(pl.LightningModule):
     def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", num_classes=3):
-        super(CleftSegNet, self).__init__()        
-        
-        self.save_hyperparameters()        
+        super(CleftSegNet, self).__init__()
+
+        self.save_hyperparameters()
         self.args = args
 
         self.class_weights = class_weights
 
         if(class_weights is not None):
             class_weights = torch.tensor(class_weights).to(torch.float32)
-        
+
         self.loss = nn.CrossEntropyLoss(weight=class_weights)
         self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.hparams.num_classes)
 
         if self.hparams.base_encoder == 'SEResNet50':
             self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=2, num_classes=self.hparams.num_classes)
-        elif self.hparams.base_encoder == 'resnet18': 
+        elif self.hparams.base_encoder == 'resnet18':
             self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=2, num_classes=self.hparams.num_classes)
         else:
             self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=2, num_classes=self.hparams.num_classes)
 
-        
+
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.args.lr)
@@ -180,8 +182,8 @@ class CleftSegNet(pl.LightningModule):
 
     def forward(self, x):
         ret =self.model(x)
-        
-        return ret   
+
+        return ret
 
     def training_step(self, train_batch, batch_idx):
         x0, x1, y = train_batch
@@ -191,7 +193,7 @@ class CleftSegNet(pl.LightningModule):
         x = self(x)
 
         loss = self.loss(x, y)
-        
+
         self.log('train_loss', loss)
         self.accuracy(x, y)
         self.log("train_acc", self.accuracy)
@@ -200,12 +202,12 @@ class CleftSegNet(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x0, x1, y = val_batch
-        
+
         x = torch.cat([x0, x1], dim=1)
         x = self(x)
 
         loss = self.loss(x, y)
-        
+
         self.log('val_loss', loss, sync_dist=True)
         self.accuracy(x, y)
         self.log("val_acc", self.accuracy)
