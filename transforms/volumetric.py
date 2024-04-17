@@ -38,6 +38,7 @@ from monai.transforms import (
     RandSpatialCropd,
     CenterSpatialCropd,
     ScaleIntensityRanged,
+    ScaleIntensityRangePercentiles,
     ScaleIntensityd,
     NormalizeIntensityd,
     RandAdjustContrastd,
@@ -84,7 +85,7 @@ class NoEvalTransform:
         transformed_inp = self.test_transform(inp)
         return transformed_inp
 
-class CleftTrainTransforms:
+class TrainTransforms:
     def __init__(self, size=128, pad=32):
         # image augmentation functions
         self.train_transform = Compose(
@@ -92,53 +93,21 @@ class CleftTrainTransforms:
                 EnsureChannelFirst(channel_dim='no_channel'),
                 RandFlip(prob=0.5),
                 RandRotate(prob=0.5, range_x=math.pi, range_y=math.pi, range_z=math.pi, mode="nearest", padding_mode='zeros'),
-                SpatialPad(spatial_size=size+pad ),
+                SpatialPad(spatial_size=size + pad),
                 RandSpatialCrop(roi_size=size, random_size=False),
                 ScaleIntensity(),
                 RandAdjustContrast(prob=0.5),
                 RandGaussianNoise(prob=0.5),
                 RandGaussianSmooth(prob=0.5),
+                ScaleIntensityRangePercentiles(1,99,-800,2000),
                 # NormalizeIntensity(),
                 ToTensor(dtype=torch.float32, track_meta=False)
             ]
         )
+    def __call__(self, inp):
+        return self.train_transform(inp)
 
-        self.output_dir = './Output/TransformedImages'
-
-        self.csv_path = self.output_dir
-        self.csv_data = []
-
-
-    def __call__(self, inp, filename):
-        print('shape inp', inp.shape)
-        transformed_inp = self.train_transform(inp)
-        print('shape transformed_inp', transformed_inp.shape)
-
-        self.csv_datafilename = filename
-        # output_path = os.path.join(self.output_dir,filename)
-        print('filename',self.csv_datafilename)
-        self.csv_datafilename = 'Preprocess/' + self.csv_datafilename
-        output_path = self.csv_datafilename.replace('Preprocess/Output/Resampled','./Output/TransformedImages')
-        print('output_path',output_path)
-
-        out_dir = os.path.dirname(output_path)
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        # Convert tensor to SimpleITK image and save
-        sitk_image = sitk.GetImageFromArray(transformed_inp)
-        sitk.WriteImage(sitk_image, output_path)
-
-        # Record the file path
-        self.csv_data.append([self.csv_datafilename, output_path])
-
-        return transformed_inp
-
-    # def save_csv(self):
-    #     df = pd.DataFrame(self.csv_data, columns=['file_name', 'path'])
-    #     df.to_csv(self.csv_path, index=False)
-
-
-class CleftEvalTransforms:
+class EvalTransforms:
 
     def __init__(self, size=128):
 
@@ -152,35 +121,11 @@ class CleftEvalTransforms:
             ]
         )
 
-        self.output_dir = './Output/TransformedImages/Eval'
-
-        self.csv_path = self.output_dir
-        self.csv_data = []
-
-
-    def __call__(self, inp, filename):
-        transformed_inp = self.test_transform(inp)
-        self.csv_datafilename = filename
-        # output_path = os.path.join(self.output_dir,filename)
-        print('filename',self.csv_datafilename)
-        self.csv_datafilename = 'Preprocess/' + self.csv_datafilename
-        output_path = self.csv_datafilename.replace('Preprocess/Output/Resampled','./Output/TransformedImages/Eval')
-        print('output_path',output_path)
-
-        out_dir = os.path.dirname(output_path)
-        print('out_dir',out_dir)
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        # Convert tensor to SimpleITK image and save
-        sitk_image = sitk.GetImageFromArray(transformed_inp)
-        sitk.WriteImage(sitk_image, output_path)
-
-        # Record the file path
-        self.csv_data.append([self.csv_datafilename, output_path])
+    def __call__(self, inp):
         return self.test_transform(inp)
 
 
-class CleftSegTrainTransforms:
+class SegTrainTransforms:
     def __init__(self, size=128, pad=32):
         self.train_transform = Compose(
             [
@@ -201,7 +146,7 @@ class CleftSegTrainTransforms:
     def __call__(self, inp):
         return self.train_transform(inp)
 
-class CleftSegEvalTransforms:
+class SegEvalTransforms:
 
     def __init__(self, size=128):
 

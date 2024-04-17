@@ -44,18 +44,8 @@ class SelfAttention(nn.Module):
 
     def forward(self, query, values):
 
-        # score shape == (batch_size, max_length, 1)
-        # we get 1 at the last axis because we are applying score to self.V
-        # the shape of the tensor before applying self.V is (batch_size, max_length, units)
         score = self.V(nn.Tanh()(self.W1(query)))
 
-        # min_score = tf.reduce_min(tf.math.top_k(tf.reshape(score, [-1, tf.shape(score)[1]]), k=self.k, sorted=False, name=None)[0], axis=1, keepdims=True)
-        # min_score = tf.reshape(min_score, [-1, 1, 1])
-        # score_mask = tf.greater_equal(score, min_score)
-        # score_mask = tf.cast(score_mask, tf.float32)
-        # attention_weights = tf.multiply(tf.exp(score), score_mask) / tf.reduce_sum(tf.multiply(tf.exp(score), score_mask), axis=1, keepdims=True)
-
-        # attention_weights shape == (batch_size, max_length, 1)
         score = nn.Sigmoid()(score)
         sum_score = torch.sum(score, 1, keepdim=True)
         attention_weights = score / sum_score
@@ -93,9 +83,9 @@ class TimeDistributed(nn.Module):
 
         return output
 
-class CleftNet(pl.LightningModule):
+class Net(pl.LightningModule):
     def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", num_classes=3):
-        super(CleftNet, self).__init__()
+        super(Net, self).__init__()
 
         self.save_hyperparameters()
         self.args = args
@@ -113,10 +103,9 @@ class CleftNet(pl.LightningModule):
         elif self.hparams.base_encoder == 'ResNet':#Jeanne
             self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
         elif self.hparams.base_encoder == 'resnet18':
-            self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
+           self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
         else:
-            self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
-
+           self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
 
 
     def configure_optimizers(self):
@@ -152,9 +141,9 @@ class CleftNet(pl.LightningModule):
         self.log("val_acc", self.accuracy)
 
 
-class CleftSegNet(pl.LightningModule):
+class SegNet(pl.LightningModule):
     def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", num_classes=3):
-        super(CleftSegNet, self).__init__()
+        super(SegNet, self).__init__()
 
         self.save_hyperparameters()
         self.args = args
@@ -167,13 +156,23 @@ class CleftSegNet(pl.LightningModule):
         self.loss = nn.CrossEntropyLoss(weight=class_weights)
         self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.hparams.num_classes)
 
-        if self.hparams.base_encoder == 'SEResNet50':
-            self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=2, num_classes=self.hparams.num_classes)
-        elif self.hparams.base_encoder == 'resnet18':
-            self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=2, num_classes=self.hparams.num_classes)
-        else:
-            self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=2, num_classes=self.hparams.num_classes)
+        # if self.hparams.base_encoder == 'SEResNet50':
+        #     self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=2, num_classes=self.hparams.num_classes)
+        # elif self.hparams.base_encoder == 'resnet18':
+        #     self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=2, num_classes=self.hparams.num_classes)
+        # else:
+        #     self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=2, num_classes=self.hparams.num_classes)
 
+        if hasattr(monai.networks.nets, self.hparams.base_encoder):
+            template_model = getattr(monai.networks.nets, self.hparams.base_encoder)
+        elif hasattr(models, self.hparams.base_encoder):
+            template_model = getattr(models, self.hparams.base_encoder)
+        else:
+            raise "{base_encoder} not in monai networks or torchvision".format(base_encoder=self.hparams.base_encoder)
+
+        model_params = eval('dict(%s)' % self.hparams.base_encoder_params.replace(' ',''))
+
+        self.model = template_model(**model_params)
 
 
     def configure_optimizers(self):

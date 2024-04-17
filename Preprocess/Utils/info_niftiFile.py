@@ -3,9 +3,10 @@ import SimpleITK as sitk
 def get_nifti_info(file_path):
     # Read the NIfTI file
     image = sitk.ReadImage(file_path)
-
+    basename = os.path.basename(file_path)
     # Get information
     info = {
+        "File": basename,
         "Dimensions": image.GetDimension(),
         "Size": image.GetSize(),
         "Spacing": image.GetSpacing(),
@@ -37,16 +38,17 @@ def get_nifti_info_folder(args):
 
     # Get nifti info for every nifti file
     nifti_info = []
-    for file in nifti_files:
-        info = get_nifti_info(file)
-        # print('info ', info)
-        # nifti_info.append(info)
-        # Create a csv file with the information of the nifti files
-        basename = os.path.basename(file)
-        df = pd.DataFrame([info])
-        outpath = os.path.join(args.output, f"Nifti_info_{basename}.csv")
+    outpath = os.path.join(args.output, f"dataset_info.csv")
+    if not os.path.exists(outpath):
+        df = pd.DataFrame(columns=["File", "Dimensions", "Size", "Spacing", "Origin", "Direction", "Pixel Type", "Number of Components per Pixel"])
         df.to_csv(outpath, index=False)
 
+    for file in nifti_files:
+        info = get_nifti_info(file)
+        #add a row with the file info to df
+        df = pd.read_csv(outpath)
+        df = df._append(info, ignore_index=True)
+        df.to_csv(outpath, index=False)
 
     return nifti_info
 
@@ -56,7 +58,7 @@ def get_nifti_info_folder(args):
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Get nifti info')
     parser.add_argument('--input', type=str, default='Data_test_AREG', help='Input folder')
-    parser.add_argument('--output', type=str, default='nifti_info.json', help='Output file')
+    parser.add_argument('--output', type=str, default='Info/', help='Output folder')
     args = parser.parse_args()
 
     #if output folder does not exist, create it

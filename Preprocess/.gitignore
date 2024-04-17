@@ -5,5 +5,8 @@ patient_to_path3.csv
 output/
 data_cropped/
 
+Original_data/
+Preprocessed_data/
+Data_training/
 __pycache__/
 .cache/

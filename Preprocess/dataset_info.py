@@ -4,6 +4,8 @@ Author: Jeanne Claret
 
 Description: This file contains the information about the dataset
 such as the number of data per type, the number of classes.
+
+Used to rename the classes in the dataset.
 '''
 
 import csv
@@ -18,7 +20,7 @@ def count_classes(csv_file,word_class='Classification',dict_classes={}):
     output_file = csv_file.split('.')[0] + '_classes.csv'
 
     for index, row in reader.iterrows():
-        key_name = str(row[word_class]).split(' ')[0] 
+        key_name = str(row[word_class]).split(' ')[0]
         ## For Sara's dataset
         if key_name == 'Lingual':
             key_name  = 'Palatal'

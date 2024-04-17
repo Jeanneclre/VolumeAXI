@@ -100,82 +100,81 @@ def add_path(filename:str,dataframe, path_dict:dict, scans_side:list):
     to the csv file
     '''
     # Add a column 'Path0-3' for better resolution scans
-    resolution = 'sp1'
+    # resolution = 'sp1'
 
     # Extract patient names from the paths and create a mapping from patient name to path
     patient_to_path = {}
-    patient_to_path3 = {}
-    idx =0
+    # patient_to_path3 = {}
+    # idx =0
     # create column 'Path' and 'Path3' in the dataframe
     dataframe['Path'] = None
     dataframe['Path3'] = None
-
 
     idx_warning = 0
     for side, paths in path_dict.items():
         for path in paths:
                 idx_alreadypresent = False
-                if resolution in os.path.basename(path):
+                # if resolution in os.path.basename(path):
                     # Assuming the filename structure as "Clinician_patientName_scan_orientation.nii.gz"
-                    if side in path:
-                        if "IC" not in path:
-                            patientName = pathlib.Path(path).stem.split('_')[1]
-                        else:
-                            patientName = pathlib.Path(path).stem.split('_')[2]
-                        Key = (patientName,side)
-                        patient_to_path[patientName,side] = path
-
-
-                        for index, row in dataframe.iterrows():
-                            # convert row['Side'] to a string
-                            row['Side'] = str(row['Side'])
-                            if side in row['Side'] and patientName in row['Patient'] :
-                                if row['Path'] == None and idx_alreadypresent == False:
-                                    dataframe.loc[index,'Path'] = path
-                                    idx_alreadypresent = True
-
-                            else :
-                                continue
-
+                if side in path:
+                    if "IC" not in path:
+                        patientName = pathlib.Path(path).stem.split('_')[1]
                     else:
-                        if idx_warning%10 == 0:
-                            print(f"Warning:{side} not in the path ")
-                            print("please check the input --side")
-                            idx_warning+=1
+                        patientName = pathlib.Path(path).stem.split('_')[2]
+                    Key = (patientName,side)
+                    patient_to_path[patientName,side] = path
+
+
+                    for index, row in dataframe.iterrows():
+                        # convert row['Side'] to a string
+                        row['Side'] = str(row['Side'])
+                        if side in row['Side'] and patientName in row['Patient'] :
+                            if row['Path'] == None and idx_alreadypresent == False:
+                                dataframe.loc[index,'Path'] = path
+                                idx_alreadypresent = True
+
+                        else :
+                            continue
 
                 else:
+                    if idx_warning%10 == 0:
+                        print(f"Warning:{side} not in the path ")
+                        print("please check the input --side")
+                        idx_warning+=1
 
-                    # Assuming the filename structure as "Clinician_patientName_scan_orientation.nii.gz"
-                    if side in path:
-                        if "IC" not in path:
-                            patientName = pathlib.Path(path).stem.split('_')[1]
-                        else:
-                            patientName = pathlib.Path(path).stem.split('_')[2]
-                        Key3 = (patientName,side)
-                        patient_to_path3[patientName,side] = path
+    #             else:
 
-                        for index, row in dataframe.iterrows():
-                            # convert row['Side'] to a string
-                            row['Side'] = str(row['Side'])
-                            if side in row['Side'] and patientName in row['Patient'] :
-                                if row['Path3'] == None and idx_alreadypresent == False:
-                                    dataframe.loc[index,'Path3'] = path
-                                    idx_alreadypresent = True
+    #                 # Assuming the filename structure as "Clinician_patientName_scan_orientation.nii.gz"
+    #                 if side in path:
+    #                     if "IC" not in path:
+    #                         patientName = pathlib.Path(path).stem.split('_')[1]
+    #                     else:
+    #                         patientName = pathlib.Path(path).stem.split('_')[2]
+    #                     Key3 = (patientName,side)
+    #                     patient_to_path3[patientName,side] = path
 
-                            else :
-                                continue
+    #                     for index, row in dataframe.iterrows():
+    #                         # convert row['Side'] to a string
+    #                         row['Side'] = str(row['Side'])
+    #                         if side in row['Side'] and patientName in row['Patient'] :
+    #                             if row['Path3'] == None and idx_alreadypresent == False:
+    #                                 dataframe.loc[index,'Path3'] = path
+    #                                 idx_alreadypresent = True
 
-                    else:
-                        if idx_warning%10 == 0:
-                            print(f"Warning:{side} not in the path ")
-                            print("please check the input --side")
-                            idx_warning+=1
-        idx+=1
-        if idx%10==0:
-            print(f"Processed {idx} out of {len(path_dict)}")
-    # Move the 'Path' column to the front of the dataframe
-    cols3 = ["Path3"] + [col for col in dataframe if col != "Path3"]
-    dataframe = dataframe[cols3]
+    #                         else :
+    #                             continue
+
+    #                 else:
+    #                     if idx_warning%10 == 0:
+    #                         print(f"Warning:{side} not in the path ")
+    #                         print("please check the input --side")
+    #                         idx_warning+=1
+    #     idx+=1
+    #     if idx%10==0:
+    #         print(f"Processed {idx} out of {len(path_dict)}")
+    # # Move the 'Path' column to the front of the dataframe
+    # cols3 = ["Path3"] + [col for col in dataframe if col != "Path3"]
+    # dataframe = dataframe[cols3]
 
     cols = ["Path"] + [col for col in dataframe if col != "Path"]
     dataframe = dataframe[cols]
@@ -246,6 +245,8 @@ def get_data_image(filename:str,df):
             df.to_csv(filename, index=False)
 
     df.to_csv(filename, index=False)
+
+
 
 def main_input(args):
     directory = args.data_dir

@@ -8,10 +8,10 @@ import SimpleITK as sitk
 
 import torch
 
-from nets.classification import CleftNet, CleftSegNet
-from loaders.cleft_dataset import CleftDataModule, CleftSegDataModule
-from transforms.volumetric import CleftTrainTransforms, CleftEvalTransforms, CleftSegTrainTransforms, CleftSegEvalTransforms, NoTransform, NoEvalTransform
-from callbacks.logger import CleftImageLogger, CleftSegImageLogger
+from nets.classification import Net, SegNet
+from loaders.cleft_dataset import DataModule, SegDataModule
+from transforms.volumetric import TrainTransforms, EvalTransforms, SegTrainTransforms, SegEvalTransforms, NoTransform, NoEvalTransform
+from callbacks.logger import ImageLogger, SegImageLogger, ImageLoggerNeptune
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -20,9 +20,11 @@ from pytorch_lightning.strategies.ddp import DDPStrategy
 from pytorch_lightning.loggers import NeptuneLogger, TensorBoardLogger
 
 from sklearn.utils import class_weight
+import time
 
 def main(args):
     torch.cuda.empty_cache()
+    start_time = time.time()
 
     if(os.path.splitext(args.csv_train)[1] == ".csv"):
         df_train = pd.read_csv(args.csv_train)
@@ -58,24 +60,28 @@ def main(args):
 
     if args.seg_column is None:
 
-        cleftdata = CleftDataModule(df_filtered_train, df_val, df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform= NoTransform(img_size), valid_transform=NoEvalTransform(img_size), test_transform=NoEvalTransform(img_size))
+        data = DataModule(df_filtered_train, df_val, df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform= TrainTransforms(img_size), valid_transform=EvalTransforms(img_size), test_transform=EvalTransforms(img_size))
 
-        model = CleftNet(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder)
+        model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder)
 
-        image_logger = CleftImageLogger()
+        torch.backends.cudnn.benchmark = True # optimizing the training process when using NVIDIA GPUs with CUDA. Input must be fixed size
+
+        if args.neptune_project:
+            image_logger = ImageLoggerNeptune()
+        else:
+            image_logger = ImageLogger()
     else:
 
-        print('seg_column',args.seg_column)
-        cleftdata = CleftSegDataModule(df_train, df_val, df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform=CleftSegTrainTransforms(img_size), valid_transform=CleftSegEvalTransforms(img_size), test_transform=CleftSegEvalTransforms(img_size))
+        data = SegDataModule(df_train, df_val, df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform=SegTrainTransforms(img_size), valid_transform=SegEvalTransforms(img_size), test_transform=SegEvalTransforms(img_size))
 
-        model = CleftSegNet(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder)
+        model = SegNet(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder)
 
-        image_logger = CleftSegImageLogger()
+        image_logger = SegImageLogger()
 
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=args.out,
-        filename='{epoch}-{val_loss:.2f}',
+        filename='{epoch}-{val_loss:.3f}',
         save_top_k=2,
         monitor='val_loss'
     )
@@ -84,6 +90,8 @@ def main(args):
 
     if args.tb_dir:
         logger = TensorBoardLogger(save_dir=args.tb_dir, name=args.tb_name)
+    elif args.neptune_project:
+        logger = NeptuneLogger(project=args.neptune_project, tags=args.neptune_tag, api_key=os.environ["NEPTUNE_API_TOKEN"])
     else:
         logger = None
 
@@ -96,8 +104,15 @@ def main(args):
         strategy=DDPStrategy(find_unused_parameters=False),
         log_every_n_steps=args.log_every_n_steps
     )
-    trainer.fit(model, datamodule=cleftdata, ckpt_path=args.model)
 
+    trainer.fit(model, datamodule=data, ckpt_path=args.model)
+    torch.cuda.empty_cache()
+    end_time = time.time()
+
+    # format time
+    hours, rem = divmod(end_time - start_time, 3600)
+    minutes, seconds = divmod(rem, 60)
+    print("Training took {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
 
 if __name__ == '__main__':
 
@@ -107,21 +122,26 @@ if __name__ == '__main__':
     parser.add_argument('--csv_valid', required=True, type=str, help='Valid CSV')
     parser.add_argument('--csv_test', required=True, type=str, help='Test CSV')
     parser.add_argument('--img_column', type=str, default='img', help='Name of image column')
-    parser.add_argument('--class_column', type=str, default='Classification', help='Name of class column')
+    parser.add_argument('--class_column', type=str, default='Label', help='Name of class column')
     parser.add_argument('--seg_column', type=str, default=None, help='Name of segmentation column')
     parser.add_argument('--base_encoder', type=str, default='efficientnet-b0', help='Type of base encoder')
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
     parser.add_argument('--model', help='Model path to continue training', type=str, default=None)
-    parser.add_argument('--epochs', help='Max number of epochs', type=int, default=200)
-    parser.add_argument('--log_every_n_steps', help='Log every n steps', type=int, default=20)
+    parser.add_argument('--epochs', help='Max number of epochs', type=int, default=400)
+    parser.add_argument('--log_every_n_steps', help='Log every n steps', type=int, default=10)
     parser.add_argument('--out', help='Output', type=str, default="./")
     parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="./")
-    parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=1)
+    parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=4)
     parser.add_argument('--batch_size', help='Batch size', type=int, default=2)
-    parser.add_argument('--patience', help='Patience for early stopping', type=int, default=30)
+    parser.add_argument('--patience', help='Patience for early stopping', type=int, default=50)
 
+    # tensorboard
     parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default=None)
     parser.add_argument('--tb_name', help='Tensorboard experiment name', type=str, default="classification")
+
+    # neptune
+    parser.add_argument('--neptune_project', help='Neptune project name', type=str, default=None)
+    parser.add_argument('--neptune_tag', help='Neptune tag', type=str, default="Left Canine Classification")
 
 
     args = parser.parse_args()

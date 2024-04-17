@@ -2,3 +2,5 @@ Output/
 __pycache__/
 *.ipynb
 *.pth
+Training_Left/
+Training_Right/

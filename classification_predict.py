@@ -8,10 +8,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from nets.classification import CleftNet, CleftSegNet
-from loaders.cleft_dataset import CleftDataset, CleftSegDataset
-from transforms.volumetric import CleftEvalTransforms, CleftSegEvalTransforms, NoEvalTransform
-from callbacks.logger import CleftImageLogger
+from nets.classification import Net, SegNet
+from loaders.cleft_dataset import BasicDataset, SegDataset
+from transforms.volumetric import EvalTransforms, SegEvalTransforms, NoEvalTransform
+from callbacks.logger import ImageLogger
 
 from sklearn.utils import class_weight
 from sklearn.metrics import classification_report
@@ -26,9 +26,9 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 def main(args):
 
     if args.seg_column is None:
-        model = CleftNet().load_from_checkpoint(args.model)
+        model = Net().load_from_checkpoint(args.model)
     else:
-        model = CleftSegNet().load_from_checkpoint(args.model)
+        model = SegNet().load_from_checkpoint(args.model)
 
     model.eval()
     model.cuda()
@@ -62,12 +62,12 @@ def main(args):
         df_test[args.class_column] = df_test[args.class_column].replace(class_replace)
 
         if args.seg_column is None:
-            test_ds = CleftDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, transform=NoEvalTransform(256))
+            test_ds = BasicDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, transform=EvalTransforms(256))
         else:
-            test_ds = CleftSegDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, seg_column=args.seg_column, transform=CleftSegEvalTransforms(256))
+            test_ds = SegDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, seg_column=args.seg_column, transform=SegEvalTransforms(256))
 
     else:
-        test_ds = CleftDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, transform=NoEvalTransform(256))
+        test_ds = BasicDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, transform=EvalTransforms(256))
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, prefetch_factor=4)
 
@@ -107,7 +107,6 @@ def main(args):
         df_test.to_parquet(os.path.join(args.out, os.path.basename(args.csv).replace(".parquet", "_prediction.parquet")), index=False)
 
 
-
     pickle.dump(probs, open(os.path.join(args.out, os.path.basename(args.csv).replace(ext, "_probs.pickle")), 'wb'))
 
     if len(features) > 0:
@@ -126,7 +125,7 @@ if __name__ == '__main__':
     parser.add_argument('--class_column', type=str, help='Column name in the csv file with classes', default="Classification")
     parser.add_argument('--seg_column', type=str, help='Column name in the csv file with image segmentation path', default=None)
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
-    parser.add_argument('--model', help='Model path to continue training', type=str, default=None)
+    parser.add_argument('--model', type=str, help='Model path to continue training',  default='./')
     parser.add_argument('--epochs', help='Max number of epochs', type=int, default=200)
     parser.add_argument('--out', help='Output directory', type=str, default="./")
     parser.add_argument('--pred_column', help='Output column name', type=str, default="pred")
