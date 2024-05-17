@@ -110,7 +110,6 @@ def add_info(input_csv_path,label_csv,patient_column,label_column,words_list,sid
 
             input_csv.loc[index,'Label'] = label
 
-
         #save the new csv
         input_csv.to_csv(input_csv_path, index=False)
 
@@ -132,5 +131,7 @@ if __name__ =="__main__":
     parser.add_argument("--side", type=str, help="Side of the canine you're working on", default='Left')
     args = parser.parse_args()
 
+    if not os.path.exists(os.path.dirname(args.output)):
+        os.makedirs(args.output)
     create_csv_input(args.input_folder, args.output)
     add_info(args.output,args.label_file,args.patient_column,args.label_column,args.words_list,args.side)

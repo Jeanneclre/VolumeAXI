@@ -26,7 +26,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 def main(args):
 
     if args.seg_column is None:
-        model = Net().load_from_checkpoint(args.model)
+        model = Net(seed=args.seed).load_from_checkpoint(args.model)
     else:
         model = SegNet().load_from_checkpoint(args.model)
 
@@ -62,12 +62,12 @@ def main(args):
         df_test[args.class_column] = df_test[args.class_column].replace(class_replace)
 
         if args.seg_column is None:
-            test_ds = BasicDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, transform=EvalTransforms(256))
+            test_ds = BasicDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, transform=EvalTransforms(args.img_size))
         else:
-            test_ds = SegDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, seg_column=args.seg_column, transform=SegEvalTransforms(256))
+            test_ds = SegDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, class_column=args.class_column, seg_column=args.seg_column, transform=SegEvalTransforms(args.img_size))
 
     else:
-        test_ds = BasicDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, transform=EvalTransforms(256))
+        test_ds = BasicDataset(df_test, img_column=args.img_column, mount_point=args.mount_point, transform=EvalTransforms(args.img_size))
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, prefetch_factor=4)
 
@@ -114,9 +114,7 @@ def main(args):
         pickle.dump(features, open(os.path.join(args.mount_point, args.out, os.path.basename(args.csv).replace(ext, "_prediction.pickle")), 'wb'))
 
 
-if __name__ == '__main__':
-
-
+def get_argparse():
     parser = argparse.ArgumentParser(description='Classification predict')
     parser.add_argument('--csv', type=str, help='CSV file for testing', required=True)
     parser.add_argument('--csv_train', type=str, help='CSV file to compute class replace', required=True)
@@ -125,7 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('--class_column', type=str, help='Column name in the csv file with classes', default="Classification")
     parser.add_argument('--seg_column', type=str, help='Column name in the csv file with image segmentation path', default=None)
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
-    parser.add_argument('--model', type=str, help='Model path to continue training',  default='./')
+    parser.add_argument('--model', type=str, help='Model path to use for the predictions',  default='./')
     parser.add_argument('--epochs', help='Max number of epochs', type=int, default=200)
     parser.add_argument('--out', help='Output directory', type=str, default="./")
     parser.add_argument('--pred_column', help='Output column name', type=str, default="pred")
@@ -133,7 +131,14 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=4)
     parser.add_argument('--batch_size', help='Batch size', type=int, default=4)
     parser.add_argument('--base_encoder', type=str, default='efficientnet-b0', help='Type of base encoder')
+    parser.add_argument('--img_size', help='Image size of the dataset', type=int, default=224)
 
+    parser.add_argument('--seed', help='Seed for reproducibility', type=int, default=42)
+    return parser
+
+if __name__ == '__main__':
+
+    parser = get_argparse()
     args = parser.parse_args()
 
     main(args)

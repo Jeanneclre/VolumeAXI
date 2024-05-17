@@ -9,7 +9,7 @@ import SimpleITK as sitk
 import torch
 
 from nets.classification import Net, SegNet
-from loaders.cleft_dataset import DataModule, SegDataModule
+from loaders.cleft_dataset_origin import DataModule, SegDataModule
 from transforms.volumetric import TrainTransforms, EvalTransforms, SegTrainTransforms, SegEvalTransforms, NoTransform, NoEvalTransform
 from callbacks.logger import ImageLogger, SegImageLogger, ImageLoggerNeptune
 
@@ -22,25 +22,37 @@ from pytorch_lightning.loggers import NeptuneLogger, TensorBoardLogger
 from sklearn.utils import class_weight
 import time
 
+def set_seeds(seed):
+
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False  # If using CuDNN
+
 def main(args):
     torch.cuda.empty_cache()
+    set_seeds(args.seed)
     start_time = time.time()
 
     if(os.path.splitext(args.csv_train)[1] == ".csv"):
         df_train = pd.read_csv(args.csv_train)
         df_val = pd.read_csv(args.csv_valid)
-        df_test = pd.read_csv(args.csv_test)
+        # df_test = pd.read_csv(args.csv_test)
     else:
         df_train = pd.read_parquet(args.csv_train)
         df_val = pd.read_parquet(args.csv_valid)
-        df_test = pd.read_parquet(args.csv_test)
+        # df_test = pd.read_parquet(args.csv_test)
 
     # unique_classes = np.sort(np.unique(df_train[args.class_column]))
     # unique_classes= np.delete(unique_classes, 3)
 
 
     df_filtered_train = df_train.dropna(subset=[args.class_column])
+
     df_filtered_train = df_filtered_train.reset_index(drop=True)
+
     unique_classes = np.unique(df_filtered_train[args.class_column])
     unique_class_weights = np.array(class_weight.compute_class_weight(class_weight='balanced', classes=unique_classes, y=df_filtered_train[args.class_column]))
 
@@ -53,26 +65,27 @@ def main(args):
     df_filtered_train[args.class_column] = df_filtered_train[args.class_column].replace(class_replace)
 
     df_val[args.class_column] = df_val[args.class_column].replace(class_replace)
-    df_test[args.class_column] = df_test[args.class_column].replace(class_replace)
+    # df_test[args.class_column] = df_test[args.class_column].replace(class_replace)
 
-    img_size = df_filtered_train.shape[0]
+    img_size = args.img_size
 
 
     if args.seg_column is None:
 
-        data = DataModule(df_filtered_train, df_val, df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform= TrainTransforms(img_size), valid_transform=EvalTransforms(img_size), test_transform=EvalTransforms(img_size))
+        data = DataModule(df_filtered_train, df_val, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
+                          train_transform= TrainTransforms(img_size,pad=15), valid_transform=EvalTransforms(img_size),seed=args.seed)
 
-        model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder)
+        model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder,seed=args.seed)
 
-        torch.backends.cudnn.benchmark = True # optimizing the training process when using NVIDIA GPUs with CUDA. Input must be fixed size
+        # torch.backends.cudnn.benchmark = True # optimizing the training process when using NVIDIA GPUs with CUDA. Input must be fixed size
 
         if args.neptune_project:
-            image_logger = ImageLoggerNeptune()
+            image_logger = ImageLoggerNeptune(log_steps=args.log_every_n_steps)
         else:
             image_logger = ImageLogger()
     else:
 
-        data = SegDataModule(df_train, df_val, df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform=SegTrainTransforms(img_size), valid_transform=SegEvalTransforms(img_size), test_transform=SegEvalTransforms(img_size))
+        data = SegDataModule(df_train, df_val, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column, train_transform=SegTrainTransforms(img_size), valid_transform=SegEvalTransforms(img_size))
 
         model = SegNet(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=args.base_encoder)
 
@@ -116,11 +129,10 @@ def main(args):
 
 if __name__ == '__main__':
 
-
     parser = argparse.ArgumentParser(description='Cleft classification Training')
     parser.add_argument('--csv_train', required=True, type=str, help='Train CSV')
     parser.add_argument('--csv_valid', required=True, type=str, help='Valid CSV')
-    parser.add_argument('--csv_test', required=True, type=str, help='Test CSV')
+    # parser.add_argument('--csv_test', required=True, type=str, help='Test CSV')
     parser.add_argument('--img_column', type=str, default='img', help='Name of image column')
     parser.add_argument('--class_column', type=str, default='Label', help='Name of class column')
     parser.add_argument('--seg_column', type=str, default=None, help='Name of segmentation column')
@@ -132,8 +144,9 @@ if __name__ == '__main__':
     parser.add_argument('--out', help='Output', type=str, default="./")
     parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="./")
     parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=4)
-    parser.add_argument('--batch_size', help='Batch size', type=int, default=2)
+    parser.add_argument('--batch_size', help='Batch size', type=int, default=4)
     parser.add_argument('--patience', help='Patience for early stopping', type=int, default=50)
+    parser.add_argument('--img_size', help='Image size of the dataset', type=int, default=256)
 
     # tensorboard
     parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default=None)
@@ -143,6 +156,8 @@ if __name__ == '__main__':
     parser.add_argument('--neptune_project', help='Neptune project name', type=str, default=None)
     parser.add_argument('--neptune_tag', help='Neptune tag', type=str, default="Left Canine Classification")
 
+    #seed
+    parser.add_argument('--seed', help='Seed for reproducibility', type=int, default=42)
 
     args = parser.parse_args()
 

@@ -86,20 +86,20 @@ class NoEvalTransform:
         return transformed_inp
 
 class TrainTransforms:
-    def __init__(self, size=128, pad=32):
+    def __init__(self, size=256, pad=10):
         # image augmentation functions
         self.train_transform = Compose(
             [
                 EnsureChannelFirst(channel_dim='no_channel'),
-                RandFlip(prob=0.5),
+                # RandFlip(prob=0.5),
                 RandRotate(prob=0.5, range_x=math.pi, range_y=math.pi, range_z=math.pi, mode="nearest", padding_mode='zeros'),
                 SpatialPad(spatial_size=size + pad),
                 RandSpatialCrop(roi_size=size, random_size=False),
-                ScaleIntensity(),
-                RandAdjustContrast(prob=0.5),
+                # ScaleIntensity(),
                 RandGaussianNoise(prob=0.5),
                 RandGaussianSmooth(prob=0.5),
-                ScaleIntensityRangePercentiles(1,99,-800,2000),
+                ScaleIntensityRangePercentiles(2,99,0,1),
+                RandAdjustContrast(prob=0.5),
                 # NormalizeIntensity(),
                 ToTensor(dtype=torch.float32, track_meta=False)
             ]
@@ -109,11 +109,12 @@ class TrainTransforms:
 
 class EvalTransforms:
 
-    def __init__(self, size=128):
+    def __init__(self, size=256,pad=10):
 
-        self.test_transform = transforms.Compose(
+        self.test_transform = Compose(
             [
                 EnsureChannelFirst(channel_dim='no_channel'),
+                SpatialPad(spatial_size=size+pad ),
                 CenterSpatialCrop(size),
                 # NormalizeIntensity(),
                 ScaleIntensity(),

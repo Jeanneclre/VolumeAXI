@@ -6,7 +6,57 @@ import glob
 import sys
 import csv
 
+def resample_image_with_custom_size(img,segmentation,img_filename, args):
+    target_size = args.size
+
+    print("===== IMG INFO =====")
+    print("Size:", img.GetSize())
+    print("Seg Size:", segmentation.GetSize())
+    print("Spacing:", img.GetSpacing())
+    print("Origin:", img.GetOrigin())
+
+    label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
+    label_shape_filter.Execute(segmentation)
+    bounding_box = label_shape_filter.GetBoundingBox(1)  # Assuming label of interest is 1
+
+    print('bounding box:', bounding_box)
+
+    roi = sitk.RegionOfInterestImageFilter()
+    roi.SetRegionOfInterest(bounding_box)
+    roi.SetSize([bounding_box[i + 3] for i in range(img.GetDimension())])
+    roi_img = roi.Execute(img)
+
+    print("roi_img size:", roi_img.GetSize())
+    # Pad the ROI to the target size
+     # Check if the target size is larger than the image size, pad if so
+    axes_to_pad_Up = [0]*img.GetDimension()
+    axes_to_pad_Down = [0]*img.GetDimension()
+    for dim in range(img.GetDimension()):
+        if roi_img.GetSize()[dim] < target_size[dim]:
+            pad_size = target_size[dim] - roi_img.GetSize()[dim]
+            pad_size_Up = pad_size // 2
+            pad_size_Down = pad_size - pad_size_Up
+            axes_to_pad_Up[dim] = pad_size_Up
+            axes_to_pad_Down[dim] = pad_size_Down
+            pad_filter = sitk.ConstantPadImageFilter()
+            # Get the minimum value of the image
+            min_val = float(np.min(sitk.GetArrayFromImage(img)))
+            pad_filter.SetConstant(min_val)
+            pad_filter.SetPadLowerBound(axes_to_pad_Down)
+            pad_filter.SetPadUpperBound(axes_to_pad_Up)
+            img_padded = pad_filter.Execute(roi_img)
+
+        else:
+            img_padded = roi_img
+
+    print("New size:", img_padded.GetSize())
+    return img_padded
+
+
 def resample_fn(img, args):
+    '''
+    Resample an image to a new size and spacing
+    '''
     output_size = args.size
     fit_spacing = args.fit_spacing
     iso_spacing = args.iso_spacing
@@ -22,7 +72,6 @@ def resample_fn(img, args):
         InterpolatorType = sitk.sitkLinear
     else:
         InterpolatorType = sitk.sitkNearestNeighbor
-
 
 
     spacing = img.GetSpacing()
@@ -61,19 +110,20 @@ def resample_fn(img, args):
     print("Output spacing:", output_spacing)
     print("Output origin:", output_origin)
 
+    min_val = float(np.min(sitk.GetArrayFromImage(img)))
     resampleImageFilter = sitk.ResampleImageFilter()
     resampleImageFilter.SetInterpolator(InterpolatorType)
     resampleImageFilter.SetOutputSpacing(output_spacing)
     resampleImageFilter.SetSize(output_size)
     resampleImageFilter.SetOutputDirection(img.GetDirection())
     resampleImageFilter.SetOutputOrigin(output_origin)
-    # resampleImageFilter.SetDefaultPixelValue(zeroPixel)
+    resampleImageFilter.SetDefaultPixelValue(min_val)
 
 
     return resampleImageFilter.Execute(img)
 
 
-def Resample(img_filename, args):
+def Resample(img_filename, segm, args):
 
     output_size = args.size
     fit_spacing = args.fit_spacing
@@ -87,7 +137,15 @@ def Resample(img_filename, args):
     if(args.img_spacing):
         img.SetSpacing(args.img_spacing)
 
-    return resample_fn(img, args)
+    if args.segmentation is not None:
+        seg =   sitk.ReadImage(segm)
+        return resample_image_with_custom_size(img, seg,img_filename, args)
+    else:
+        return resample_fn(img, args)
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -122,6 +180,7 @@ if __name__ == "__main__":
     img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=3)
     img_group.add_argument('--pixel_dimension', type=int, help='Pixel dimension', default=1)
     img_group.add_argument('--rgb', type=bool, help='Use RGB type pixel', default=False)
+    img_group.add_argument('--segmentation', type=str, help='Segmentation image to resample', default=None)
 
     out_group = parser.add_argument_group('Ouput parameters')
     out_group.add_argument('--ow', type=int, help='Overwrite', default=1)
@@ -131,28 +190,61 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     filenames = []
+    filenames_seg = []
     if(args.img):
         fobj = {}
         fobj["img"] = args.img
         fobj["out"] = args.out
+        if args.segmentation is not None:
+            fobj["seg"] = args.segmentation
         filenames.append(fobj)
     elif(args.dir):
         out_dir = args.out
-        normpath = os.path.normpath("/".join([args.dir, '**', '*']))
+        normpath = os.path.normpath("/".join([args.dir, '**','*']))
+
+        fobj = {}
         for img in glob.iglob(normpath, recursive=True):
             if os.path.isfile(img) and True in [ext in img for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png"]]:
-                fobj = {}
-                fobj["img"] = img
-                fobj["out"] = os.path.normpath(out_dir + "/" + img.replace(args.dir, ''))
-                if args.out_ext is not None:
-                    out_ext = args.out_ext
-                    if out_ext[0] != ".":
-                        out_ext = "." + out_ext
-                    fobj["out"] = os.path.splitext(fobj["out"])[0] + out_ext
-                if not os.path.exists(os.path.dirname(fobj["out"])):
-                    os.makedirs(os.path.dirname(fobj["out"]))
-                if not os.path.exists(fobj["out"]) or args.ow:
-                    filenames.append(fobj)
+                if args.segmentation is not None:
+                    patient=os.path.basename(img).split('_')[0]
+                    basename=os.path.basename(img)
+                    for word in ['MB','ML','MR']:
+                        if word in basename:
+                            patient= patient +f'_{word}'
+                            break
+
+                    if patient not in fobj:
+                        fobj[patient] = {}
+                    fobj[patient]["img"] = img
+                    fobj[patient]["out"] = os.path.normpath(out_dir + "/" + img.replace(args.dir, ''))
+                    if args.out_ext is not None:
+                        out_ext = args.out_ext
+                        if out_ext[0] != ".":
+                            out_ext = "." + out_ext
+                        fobj[patient]["out"] = os.path.splitext(fobj[patient]["out"])[0] + out_ext
+
+                    if not os.path.exists(os.path.dirname(fobj[patient]["out"])):
+                        os.makedirs(os.path.dirname(fobj[patient]["out"]))
+                    if not os.path.exists(fobj[patient]["out"]) or args.ow:
+                        filenames.append(fobj)
+                else:
+
+                    fobj = {}
+                    fobj["img"] = img
+                    fobj["out"] = os.path.normpath(out_dir + "/" + img.replace(args.dir, ''))
+
+                    if args.out_ext is not None:
+                        out_ext = args.out_ext
+                        if out_ext[0] != ".":
+                            out_ext = "." + out_ext
+                        fobj["out"] = os.path.splitext(fobj["out"])[0] + out_ext
+
+                    if not os.path.exists(os.path.dirname(fobj["out"])):
+                        os.makedirs(os.path.dirname(fobj["out"]))
+
+                    if not os.path.exists(fobj["out"]) or args.ow:
+                        filenames.append(fobj)
+
     elif(args.csv):
         replace_dir_name = args.csv_root_path
         with open(args.csv) as csvfile:
@@ -188,6 +280,23 @@ if __name__ == "__main__":
     else:
         raise "Set img or dir to resample!"
 
+    if args.segmentation is not None:
+        normpath_seg= os.path.normpath("/".join([args.segmentation, '**', '*']))
+        fobj_seg = {}
+        for seg in glob.iglob(normpath_seg, recursive=True):
+            if os.path.isfile(seg) and True in [ext in seg for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png"]]:
+
+                patient_seg=os.path.basename(seg).split('_')[0]
+                basename_seg=os.path.basename(seg)
+                for word in ['MB','ML','MR']:
+                    if word in basename_seg:
+                        patient_seg= patient_seg +f'_{word}'
+                # if the key patient doesn't exist, create it
+                if patient_seg not in fobj_seg:
+                    fobj_seg[patient_seg] = {}
+                fobj_seg[patient_seg]["seg"] = seg
+                filenames_seg.append(fobj_seg)
+
     if(args.rgb):
         if(args.pixel_dimension == 3):
             print("Using: RGB type pixel with unsigned char")
@@ -203,9 +312,10 @@ if __name__ == "__main__":
         args.spacing = ref.GetSpacing()
         args.origin = ref.GetOrigin()
 
-    for fobj in filenames:
+    if args.segmentation is None:
+        for fobj in filenames:
 
-        try:
+            # try:
 
             if "ref" in fobj and fobj["ref"] is not None:
                 ref = sitk.ReadImage(fobj["ref"])
@@ -214,7 +324,7 @@ if __name__ == "__main__":
                 args.origin = ref.GetOrigin()
 
             if args.size is not None:
-                img = Resample(fobj["img"], args)
+                img = Resample(fobj["img"], args.segmentation, args)
             else:
                 img = sitk.ReadImage(fobj["img"])
 
@@ -224,5 +334,23 @@ if __name__ == "__main__":
             writer.UseCompressionOn()
             writer.Execute(img)
 
-        except Exception as e:
-            print(e, file=sys.stderr)
+            # except Exception as e:
+            #     print(f"Error processing {fobj['img']}")
+            #     print(e, file=sys.stderr)
+
+    else:
+
+        for key, img in fobj.items():
+            cpt=0
+            for key_seg in fobj_seg.keys():
+                if key == key_seg:
+
+                    img = Resample(fobj[key]['img'], fobj_seg[key_seg]['seg'], args)
+
+                    print("Writing:",fobj[key]['img'])
+                    writer = sitk.ImageFileWriter()
+                    writer.SetFileName(fobj[key]['out'])
+                    writer.UseCompressionOn()
+                    writer.Execute(img)
+
+

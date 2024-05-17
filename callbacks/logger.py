@@ -2,50 +2,113 @@ from pytorch_lightning.callbacks import Callback
 import torchvision
 import torch
 
-import neptune.new as neptune
+import neptune as neptune
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
+import random as rd
+from pytorch_lightning.loggers import NeptuneLogger, TensorBoardLogger
+
+def tensorboard_neptune_logger(args):
+    image_logger=None
+    logger = None
+    try:
+        tensorboard = args.tensorboard
+        tensorboard = True
+    except AttributeError:
+        tensorboard = False
+
+    try:
+        neptune = args.neptune_project
+        neptune =True
+    except AttributeError:
+        neptune = False
+
+    if tensorboard:
+        print('[DEBUG] USING TENSORBOARD LOGGER')
+        logger = TensorBoardLogger(args.log_dir, name=args.name)
+        if args.seg_column is None:
+            image_logger = ImageLogger()
+        else:
+            image_logger = SegImageLogger()
+
+    if neptune:
+        print('[DEBUG] USING NEPTUNE LOGGER')
+        logger = NeptuneLogger(project=args.neptune_project, tags=args.neptune_tag, api_key=os.environ["NEPTUNE_API_TOKEN"])
+        if args.seg_column is None:
+            image_logger = ImageLoggerNeptune(log_steps=args.log_every_n_steps)
+        else:
+            print('Neptune logger not implemented for segmentation')
+
+    if logger is None:
+        raise ValueError("No logger specified. Please specify either tensorboard or neptune")
+    if image_logger is None:
+        raise ValueError("No image logger specified. Please specify either ImageLogger or ImageLoggerNeptune")
+
+    return logger, image_logger
 
 class ImageLoggerNeptune(Callback):
-    def __init__(self, num_images=256, log_steps=100):
+    def __init__(self, num_images=4, log_steps=10):
         self.log_steps = log_steps
         self.num_images = num_images
         self.idx =0
 
-    def on_train_batch_end(self, trainer, pl_module, output,batch, batch_idx,unused=0):
+    def on_train_batch_end(self, trainer, pl_module, output, batch, batch_idx):
         if batch_idx % self.log_steps == 0:
-            x, y = batch
+            # print(f"[DEBUG] on_train_batch_end: batch_idx={batch_idx}")
+            try:
+                x, y = batch
+                # print('[DEBUG] x type:', type(x), 'x shape:', x.shape)
+                # num_images = min(self.num_images, x.shape[0])
+                with torch.no_grad():
+                    # Normalize the image tensor
+                    x = torch.clip(x, 0, 1)
 
-            num_images = min(self.num_images, x.shape[0])
-            x=x.to(pl_module.device, non_blocking=True)
-            y=y.to(pl_module.device, non_blocking=True)
+                    # Create a slice of the 3D volume to get a 2D image
+                    # tensor shape : [BS, C, D, H, W]
+                    slices_to_watch = [(int(x.shape[2])/2) -20, int(x.shape[2])/2, (int(x.shape[2])/2) + 20]
+                    #slices_idx = torch.randint(low=0, high=x.shape[0], size=(num_images,))
+                    # slices = x[0,:,slices_idx[0],:,:]
+                    # slices2 = x[0,:,:,slices_idx[0],:]
+                    # slices3 = x[0,:,:,:,slices_idx[0]]
+                    rand_idx = rd.randint(0, len(slices_to_watch)-1)
+                    slices_idx = int(slices_to_watch[rand_idx])
 
-            with torch.no_grad():
-                # Normalize the image tensor
-                x = x - torch.min(x)
-                x = x / torch.max(x)
+                    slices = x[0,:,slices_idx,:,:]  #Axial
+                    slices2 = x[0,:,:,slices_idx,:] #Coronal
+                    slices3 = x[0,:,:,:,slices_idx] #Sagittal
 
-                # Create a slice of the 3D volume to get a 2D image
-                slices = x[0:num_images,:,:,:,0:int(x.shape[-1]/2)]
-                slice2 = x[0:num_images,:,:,int(x.shape[-1]/2):,:]
+                    permuted_slices = torch.permute(slices, (1,2,0))
+                    permuted_slices2 = torch.permute(slices2, (1,2,0))
+                    permuted_slices3 = torch.permute(slices3, (1,2,0))
 
-                permuted_slices = torch.permute(slices[0], (1,2,0,3))
+                    # Create a grid of images
+                    grid_x = torchvision.utils.make_grid(permuted_slices)
+                    grid_x2 = torchvision.utils.make_grid(permuted_slices2)
+                    grid_x3 = torchvision.utils.make_grid(permuted_slices3)
 
-                # Create a grid of images
-                grid_x = torchvision.utils.make_grid(permuted_slices[0:num_images])
-                grid_x2 = torchvision.utils.make_grid(slice2[0,0:num_images,0:1,:,:])
-                print('grid_x:',grid_x.shape)
-                print('grid_x2:',grid_x2.shape)
-                fig = plt.figure(figsize=(10, 10))
-                ax= plt.subplot(1, 2, 1)
+                    fig = plt.figure(figsize=(10, 10))
+                    plt.subplot(1, 3, 1)
+                    plt.imshow(grid_x.cpu().numpy(),cmap='gray')
+                    plt.axis('off')
+                    plt.title(f'Axial')
 
-                ax = plt.imshow(grid_x.cpu().numpy())
-                ax2 = plt.subplot(1, 2, 2)
-                ax2 = plt.imshow(grid_x2.permute(1, 2, 0).cpu().numpy())
-                trainer.logger.experiment[f'x/train_batch_{batch_idx}_{self.idx}'].upload(fig)
-                plt.close(fig)
-                self.idx+=1
+                    plt.subplot(1, 3, 2)
+                    plt.imshow(grid_x2.cpu().numpy(),cmap='gray')
+                    plt.axis('off')
+                    plt.title(f'Coronal')
+
+                    plt.subplot(1, 3, 3)
+                    plt.imshow(grid_x3.cpu().numpy(),cmap='gray')
+                    plt.axis('off')
+                    plt.title(f'Sagittal')
+
+                    trainer.logger.experiment[f'x/train_batch_{batch_idx}_slice{slices_idx}'].upload(fig)
+                    plt.close(fig)
+                    self.idx+=1
+            except Exception as e:
+                print(f"Error in on_train_batch_end: {e}")
 
 
 def read_data(file_path):

@@ -45,12 +45,12 @@ class BasicDataset(Dataset):
 
 
 class DataModule(pl.LightningDataModule):
-    def __init__(self, df_train,df_val,df_test, mount_point="./", batch_size=32, num_workers=4, img_column='img_path', class_column='Classification', train_transform=None, valid_transform=None, test_transform=None, drop_last=False,seed=42):
+    def __init__(self, df_train,df_val, mount_point="./", batch_size=32, num_workers=4, img_column='img_path', class_column='Classification', train_transform=None, valid_transform=None,  drop_last=False):
         super().__init__()
 
         self.df_train = df_train
         self.df_val = df_val
-        self.df_test = df_test
+        # self.df_test = df_test
         self.mount_point = mount_point
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -58,11 +58,9 @@ class DataModule(pl.LightningDataModule):
         self.class_column = class_column
         self.train_transform = train_transform
         self.valid_transform = valid_transform
-        self.test_transform = test_transform
+        # self.test_transform = test_transform
         self.drop_last=drop_last
 
-    def _set_seed(self, seed):
-        torch.manual_seed(seed)
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
         self.train_ds = BasicDataset(self.df_train, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, transform=self.train_transform)
@@ -71,7 +69,7 @@ class DataModule(pl.LightningDataModule):
         self.val_ds = BasicDataset(self.df_val, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, transform=self.valid_transform)
         # self.val_ds = SmartCacheDataset(base_val_ds,num_replace_workers=self.num_workers,replace_rate=0.3, cache_rate=1.0, cache_num=1)
 
-        self.test_ds = BasicDataset(self.df_test, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, transform=self.test_transform)
+        # self.test_ds = BasicDataset(self.df_test, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, transform=self.test_transform)
         # self.test_ds = SmartCacheDataset(base_test_ds,num_replace_workers=self.num_workers,replace_rate=0.3, cache_rate=1.0, cache_num=1)
 
     def train_dataloader(self):
@@ -80,8 +78,8 @@ class DataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers, persistent_workers=True, pin_memory=True, drop_last=self.drop_last)
 
-    def test_dataloader(self):
-        return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=self.drop_last)
+    # def test_dataloader(self):
+    #     return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=self.drop_last)
 
 
 class SegDataset(Dataset):
@@ -114,12 +112,12 @@ class SegDataset(Dataset):
 
 
 class SegDataModule(pl.LightningDataModule):
-    def __init__(self, df_train, df_val,df_test, mount_point="./", batch_size=32, num_workers=4, img_column='img_path', class_column='Classification', seg_column='seg', train_transform=None, valid_transform=None,test_transform=None, drop_last=False):
+    def __init__(self, df_train, df_val, mount_point="./", batch_size=32, num_workers=4, img_column='img_path', class_column='Classification', seg_column='seg', train_transform=None, valid_transform=None, drop_last=False):
         super().__init__()
 
         self.df_train = df_train
         self.df_val = df_val
-        self.df_test = df_test
+        # self.df_test = df_test
         self.mount_point = mount_point
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -128,7 +126,7 @@ class SegDataModule(pl.LightningDataModule):
         self.class_column = class_column
         self.train_transform = train_transform
         self.valid_transform = valid_transform
-        self.test_transform = test_transform
+        # self.test_transform = test_transform
         self.drop_last=drop_last
 
     def setup(self, stage=None):
@@ -139,8 +137,8 @@ class SegDataModule(pl.LightningDataModule):
         base_val_ds = SegDataset(self.df_val, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, seg_column=self.seg_column, transform=self.valid_transform)
         self.val_ds = SmartCacheDataset(base_val_ds, num_replace_workers=self.num_workers,replace_rate=0.3, cache_rate=1.0, cache_num=1)
 
-        base_test_ds =SegDataset(self.df_test, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, seg_column=self.seg_column, transform=self.test_transform)
-        self.test_ds = SmartCacheDataset(base_test_ds, num_replace_workers=self.num_workers,replace_rate=0.3, cache_rate=1.0, cache_num=1)
+        # base_test_ds =SegDataset(self.df_test, mount_point=self.mount_point, img_column=self.img_column, class_column=self.class_column, seg_column=self.seg_column, transform=self.test_transform)
+        # self.test_ds = SmartCacheDataset(base_test_ds, num_replace_workers=self.num_workers,replace_rate=0.3, cache_rate=1.0, cache_num=1)
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, num_workers=self.num_workers, persistent_workers=True, pin_memory=True, drop_last=self.drop_last, shuffle=True)
@@ -148,5 +146,5 @@ class SegDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers, persistent_workers=True, pin_memory=True, drop_last=self.drop_last)
 
-    def test_dataloader(self):
-        return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=self.drop_last)
+    # def test_dataloader(self):
+    #     return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=self.drop_last)

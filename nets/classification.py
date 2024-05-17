@@ -84,12 +84,12 @@ class TimeDistributed(nn.Module):
         return output
 
 class Net(pl.LightningModule):
-    def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", num_classes=3):
+    def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", seed = 42,num_classes=3):
         super(Net, self).__init__()
 
         self.save_hyperparameters()
         self.args = args
-
+        self._set_seed(seed)
         self.class_weights = class_weights
 
         if(class_weights is not None):
@@ -107,6 +107,8 @@ class Net(pl.LightningModule):
         else:
            self.model = monai.networks.nets.EfficientNetBN(self.hparams.base_encoder, spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
 
+    def _set_seed(self, seed):
+        torch.manual_seed(seed)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.args.lr)
@@ -123,8 +125,8 @@ class Net(pl.LightningModule):
         x = self(x)
 
         loss = self.loss(x, y)
-
         self.log('train_loss', loss)
+
         self.accuracy(x, y)
         self.log("train_acc", self.accuracy)
 
@@ -135,8 +137,8 @@ class Net(pl.LightningModule):
         x = self(x)
 
         loss = self.loss(x, y)
-
         self.log('val_loss', loss, sync_dist=True)
+
         self.accuracy(x, y)
         self.log("val_acc", self.accuracy)
 
