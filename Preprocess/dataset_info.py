@@ -23,7 +23,11 @@ def count_classes(csv_file,word_class='Classification',dict_classes={}):
         #if key_name is already an integer, count the number of similar int
         if isinstance(row[word_class],int):
             key_name = row[word_class]
-        else:
+
+        elif isinstance(row[word_class],float):
+            print('[ERROR] Your label column contains no int or str values')
+
+        elif isinstance(row[word_class],str):
             key_name = str(row[word_class]).split(' ')[0]
             ## For Sara's dataset
             if key_name == 'Lingual':
@@ -32,10 +36,13 @@ def count_classes(csv_file,word_class='Classification',dict_classes={}):
                 key_name = 'Buccal'
             if key_name == 'BuccaL':
                 key_name = 'Buccal'
+
+
         if classes.get(key_name) is None:
             classes[key_name] = 1
         else:
             classes[key_name] += 1
+
 
         if not isinstance(row[word_class],int):
 
@@ -50,7 +57,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Dataset information')
     parser.add_argument('--input', required=True, type=str, help='CSV to count and rename classes')
-    parser.add_argument('--class_column', type=str, default='Classification', help='Name of class column')
+    parser.add_argument('--class_column', type=str, default='Label', help='Name of class column')
 
     args = parser.parse_args()
     dict_classes = {

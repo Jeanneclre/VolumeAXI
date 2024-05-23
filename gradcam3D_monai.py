@@ -218,8 +218,7 @@ def main(args):
 
 
     for batch,(X,y) in pbar:
-        print('batch:', batch)
-        print('====')
+
         data= X.cuda()
 
         cam_normalized, cam_sum_norm = get_cam_sum(data,model,class_index,layer_name)
@@ -230,7 +229,7 @@ def main(args):
             patient_name_list = os.path.basename(img_path[0]).split('_')
 
         else:
-            patient_name_list = os.path.basename(df[batch]['Path']).split('_')
+            patient_name_list = os.path.basename(df.loc[batch]['Path']).split('_')
 
         if "MB" in patient_name_list :
             patient_name = patient_name_list[0] + '_' + "MB"
@@ -245,8 +244,8 @@ def main(args):
 
         # Save the CAM as a Nifti image in grayscale levels
         if args.csv_test is not None:
-            true_class = df.loc[batch]['Label']
-            predicted_class = df.loc[batch]['Predictions']
+            true_class = df.loc[batch][args.class_column]
+            predicted_class = df.loc[batch][args.pred_column]
 
         else:
             true_class = 'X'
@@ -275,6 +274,7 @@ if __name__== "__main__":
     group.add_argument('--csv_test', type=str, help='Testing set csv to load')
     parser.add_argument('--img_column', type=str, default='Path', help='Name of image column')
     parser.add_argument('--class_column', type=str, default='Label', help='Name of class column with the labels')
+    parser.add_argument('--pred_column', type=str, default='Predictions', help='Name of class column with the predicted labels')
 
     group.add_argument('--img_path', type=str, help='Path to the image to load')
 

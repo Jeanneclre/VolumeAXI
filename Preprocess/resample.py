@@ -6,7 +6,10 @@ import glob
 import sys
 import csv
 
-def resample_image_with_custom_size(img,segmentation,img_filename, args):
+def resample_image_with_custom_size(img,segmentation, args):
+    '''
+    Use segmentation to crop the image and then pad it to the target size
+    '''
     target_size = args.size
 
     print("===== IMG INFO =====")
@@ -63,6 +66,8 @@ def resample_fn(img, args):
     pixel_dimension = args.pixel_dimension
     center = args.center
 
+    print('FIT SPACING:', fit_spacing)
+    print('ISO SPACING:', iso_spacing)
     # if(pixel_dimension == 1):
     #     zeroPixel = 0
     # else:
@@ -82,11 +87,13 @@ def resample_fn(img, args):
     # print(output_size)
 
     if(fit_spacing):
+        print('Fit spacing')
         output_spacing = [sp*si/o_si for sp, si, o_si in zip(spacing, size, output_size)]
     else:
         output_spacing = spacing
 
-    if(iso_spacing):
+    if(iso_spacing ):
+        print('Iso spacing' )
         output_spacing_filtered = [sp for si, sp in zip(args.size, output_spacing) if si != -1]
         # print(output_spacing_filtered)
         max_spacing = np.max(output_spacing_filtered)
@@ -139,7 +146,7 @@ def Resample(img_filename, segm, args):
 
     if args.segmentation is not None:
         seg =   sitk.ReadImage(segm)
-        return resample_image_with_custom_size(img, seg,img_filename, args)
+        return resample_image_with_custom_size(img, seg, args)
     else:
         return resample_fn(img, args)
 
@@ -173,8 +180,8 @@ if __name__ == "__main__":
     transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Output origin')
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=True)
     transform_group.add_argument('--center', type=bool, help='Center the image in the space', default=True)
-    transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=True)
-    transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=True)
+    transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=False)
+    transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=False)
 
     img_group = parser.add_argument_group('Image parameters')
     img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=3)

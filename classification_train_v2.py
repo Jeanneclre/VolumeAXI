@@ -11,7 +11,7 @@ import torch
 
 from nets.classification import Net, SegNet
 from loaders.cleft_dataset import DataModule, SegDataModule
-from transforms.volumetric import TrainTransforms, EvalTransforms, SegTrainTransforms, SegEvalTransforms, NoTransform, NoEvalTransform
+from transforms.volumetric import TrainTransforms, EvalTransforms,SpecialTransforms, SegTrainTransforms, SegEvalTransforms, NoTransform, NoEvalTransform
 import classification_predict
 import classification_eval_VAXI
 from useful_readibility import printRed, printGreen,printOrange, printBlue
@@ -75,6 +75,8 @@ def main(args):
     set_seed(args.seed)
     start_time = time.time()
 
+    img_size = args.img_size
+
     # Load data
     if(os.path.splitext(args.csv)[1] == ".csv"):
         df = pd.read_csv(args.csv)
@@ -105,6 +107,18 @@ def main(args):
 
     df_filtered_train[args.class_column] = df_filtered_train[args.class_column].replace(class_replace)
 
+    # Load special data
+    if args.csv_special is not None:
+        df_special = pd.read_csv(args.csv_special)
+        df_filtered_special = df_special.dropna(subset=[args.class_column])
+        df_filtered_special = df_filtered_special.reset_index(drop=True)
+        df_filtered_special[args.class_column] = df_filtered_special[args.class_column].replace(class_replace)
+        special_tf = SpecialTransforms(img_size)
+    else:
+        df_filtered_special = None
+        special_tf=None
+
+
     # Cross validation
     nb_fold_perEncoder= args.split / len(args.base_encoder)
     if not nb_fold_perEncoder.is_integer():
@@ -115,7 +129,6 @@ def main(args):
 
     kf = StratifiedKFold(n_splits=args.split, shuffle=True, random_state=args.seed)
 
-    img_size = args.img_size
 
     power2 = math.ceil(math.log2(img_size)) # get the next power of 2
     pad_size = ((2**power2) - args.img_size) // 2
@@ -124,16 +137,35 @@ def main(args):
     best_metric = 0
     best_model_fold = ""
 
+    if len(args.base_encoder) != 1:
+        nb_split_perEncoder= args.split / len(args.base_encoder)
+    else:
+        nb_split_perEncoder = args.split
+
+
+    idx_changeEncoder = 0
+
     for i, (train_index, test_index) in enumerate(kf.split(df_filtered_train, df_filtered_train[args.class_column])):
         #################################
         #                               #
         #          Training             #
         #                               #
         #################################
+        print('len train_index',len(train_index))
+        print('len test_index',len(test_index))
         df_train = df_filtered_train.iloc[train_index]
         df_test = df_filtered_train.iloc[test_index]
 
-        #reset index df_train and df_test
+        #create csv for testing set and training
+        outpath_test = args.out + f"/fold_{i}/test.csv"
+        if not os.path.exists(os.path.dirname(outpath_test)):
+            os.makedirs(os.path.dirname(outpath_test))
+        df_test.to_csv(outpath_test, index=False)
+
+        outpath_train = args.out + f"/fold_{i}/train.csv"
+        if not os.path.exists(os.path.dirname(outpath_train)):
+            os.makedirs(os.path.dirname(outpath_train))
+        df_train.to_csv(outpath_train, index=False)
 
 
         # split train in training and validation set with args.val_size
@@ -141,19 +173,19 @@ def main(args):
 
         df_train_inner = df_train_inner.reset_index(drop=True)
         df_val = df_val.reset_index(drop=True)
-
         df_test = df_test.reset_index(drop=True)
 
-        if len(args.base_encoder) != 1:
-            idx_changeEncoder = math.floor(i/len(args.base_encoder))
-        else:
-            idx_changeEncoder = 0
+        if i > int(nb_split_perEncoder)-1:
+            idx_changeEncoder += 1
+            nb_split_perEncoder+= nb_split_perEncoder
+
         base_encoder = args.base_encoder[idx_changeEncoder]
         printBlue(f'base_encoder in uses {base_encoder}')
 
+
         if args.seg_column is None:
-            data = DataModule(df_train_inner, df_val,df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
-                              train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), seed=args.seed)
+            data = DataModule(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
+                              train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
 
             if args.model is not None:
                 model = Net.load_from_checkpoint(args.model, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
@@ -217,13 +249,8 @@ def main(args):
         # Get the best model
         best_model,best_val_loss = get_best_checkpoint(checkpoint_dir)
         best_model = os.path.join(checkpoint_dir, best_model)
-        #create csv for testing set
-        outpath_test = args.out + f"/fold_{i}/test.csv"
-        df_test.to_csv(outpath_test, index=False)
 
-        outpath_train = args.out + f"/fold_{i}/train.csv"
-        df_train.to_csv(outpath_train, index=False)
-
+        printBlue(f'Best model of the fold {i}: {best_model}')
         prediction_args = get_argparse_dict(classification_predict.get_argparse())
         prediction_args['csv']= outpath_test
         prediction_args['csv_train']= outpath_train
@@ -238,7 +265,7 @@ def main(args):
         prediction_args['base_encoder']= base_encoder
         prediction_args['img_size']= args.img_size
 
-        outdir_prediction = args.out.split('/')[0] + f"/Predictions/fold_{i}/"
+        outdir_prediction = args.out + f"/Predictions/fold_{i}/"
         prediction_args['out']= outdir_prediction
 
         prediction_args['num_workers']= args.num_workers
@@ -295,6 +322,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Cleft classification Training')
     parser.add_argument('--csv', required=True, type=str, help='CSV with all the path and labels')
+    parser.add_argument('--csv_special', type=str, default=None, help='CSV with all the path and labels for a specific dataset to add to the training [OPTIONAL]')
 
     parser.add_argument('--img_column', type=str, default='img', help='Name of image column')
     parser.add_argument('--class_column', type=str, default='Label', help='Name of class column')

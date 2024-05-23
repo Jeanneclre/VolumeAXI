@@ -18,11 +18,18 @@ def applyMask(image, mask, label,dilation_radius):
     Use the background value of the CBCT scan as the value where the mask is not applied.
 
     """
+    mask_arr = sitk.GetArrayFromImage(mask)
 
-    mask_array = sitk.GetArrayFromImage(mask)
+    if label is not None:
+        if len(label) > 1:
+            for l in label:
+                l_int=int(l)
+                if l_int in np.unique(mask_arr):
+                    mask_array = np.where(mask_arr == l_int, 1, 0)
+        elif label in np.unique(mask_arr):
+            mask_array = np.where(mask_array == label, 1, 0)
 
-    if label is not None and label in np.unique(mask_array):
-        mask_array = np.where(mask_array == label, 1, 0)
+
         # pad the segmentation if not none to get a wider region of interest
         if dilation_radius is not None:
             # Create a binary image from mask_array
@@ -42,18 +49,42 @@ def applyMask(image, mask, label,dilation_radius):
             # Update mask_array with dilated mask
             mask_array = sitk.GetArrayFromImage(dilated_mask)
 
-        masked_image = np.where(mask_array == 1, sitk.GetArrayFromImage(image), get_background_value(image))
+            #save new segmentation
+            new_seg = sitk.GetImageFromArray(mask_array)
+            new_seg.CopyInformation(image)
+            new_seg.SetDirection(image.GetDirection())
+            new_seg.SetOrigin(image.GetOrigin())
+            new_seg.SetSpacing(image.GetSpacing())
 
-        masked_image = sitk.GetImageFromArray(masked_image)
+        elif dilation_radius is None:
+            new_seg=None
+
+        masked_array = np.where(mask_array == 1, sitk.GetArrayFromImage(image), get_background_value(image))
+        # print(f'min masked_image: {np.min(masked_image)}, max masked_image: {np.max(masked_image)}')
+        masked_image = sitk.GetImageFromArray(masked_array)
+        # print(f'min masked_image 2: {np.min(masked_image)}, max masked_image 2: {np.max(masked_image)}')
+
         masked_image.CopyInformation(image)
+        masked_image.SetDirection(image.GetDirection())
+        masked_image.SetOrigin(image.GetOrigin())
+        masked_image.SetSpacing(image.GetSpacing())
 
-    return masked_image
+        # print(f'min masked_image: {np.min(masked_image)}, max masked_image: {np.max(masked_image)}')
+        # final_masked_array = sitk.GetArrayFromImage(masked_image)
+        # final_masked_image =
+
+        #check if masked_image is associated with a value
+        if np.min(masked_array) == np.max(masked_array):
+            print('Masked image is empty, skipping...')
+            return None, None
+
+    return masked_image, new_seg
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser(description="Apply a mask to an image")
     parser.add_argument("--img", help="Input image")
     parser.add_argument("--mask", help="Input mask")
-    parser.add_argument("--label", type=int, help="Label to apply the mask",default=1)
+    parser.add_argument("--label", nargs='+', help="Label to apply the mask",default=1)
     parser.add_argument("--output", help="Output image")
     parser.add_argument("--dilatation_radius", type=int, help="Radius of the dilatation to apply to the mask",default=None)
     args = parser.parse_args()
@@ -87,11 +118,22 @@ if __name__== "__main__":
         print('working on:', img_path, mask_path)
         image = sitk.ReadImage(img_path)
         read_mask = sitk.ReadImage(mask_path)
-        output = applyMask(image, read_mask, args.label,args.dilatation_radius)
+        #check size images are the same
+        if image.GetSize() != read_mask.GetSize():
+            print(f"Image and mask {img_path} have different size, skipping...")
+            continue
+        output,seg = applyMask(image, read_mask, args.label,args.dilatation_radius)
 
         filename = os.path.basename(img_path).replace('.nii.gz','_Masked.nii.gz')
 
         sitk.WriteImage(output, os.path.join(args.output,filename))
+
+        if seg is not None:
+            filename = os.path.basename(mask_path).replace('.nii.gz','_Dilated_Seg.nii.gz')
+            output_seg= os.path.join(args.output,'Segmentation')
+            if not os.path.exists(output_seg):
+                os.makedirs(output_seg)
+            sitk.WriteImage(seg, os.path.join(output_seg,filename))
         cpt+=1
         if cpt%10 == 0:
             print(f"Mask applied to {cpt} images, still {len(match_imgMask)-cpt} to go...")

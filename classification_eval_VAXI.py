@@ -90,7 +90,7 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
     # It also responsible for plotting ROC curves, aggregating and reporting classification metrics in a structured format
     input_dir = os.path.dirname(args.csv)
     output_dir = os.path.join(args.mount_point, input_dir)
-    output_dir= output_dir +'/Predictions/'
+    output_dir= output_dir
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -113,8 +113,9 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
     fig = plt.figure(figsize=args.figsize)
 
     plot_confusion_matrix(cnf_matrix, classes=class_names, title=args.title)
-    print('split text args.out:', os.path.splitext(args.out))
-    confusion_filename = output_dir+ os.path.splitext(args.out)[0] + "_confusion.png"
+
+    fn_cf = os.path.splitext(args.out)[0] + "_confusion.png"
+    confusion_filename = os.path.join(output_dir,fn_cf)
     fig.savefig(confusion_filename)
 
 
@@ -122,7 +123,8 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
     fig2 = plt.figure(figsize=args.figsize)
     cm = plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, title=args.title + ' - normalized')
 
-    norm_confusion_filename = output_dir+ os.path.splitext(args.out)[0] + "_norm_confusion.png"
+    fn =os.path.splitext(args.out)[0] + "_norm_confusion.png"
+    norm_confusion_filename = os.path.join(output_dir, fn)
     fig2.savefig(norm_confusion_filename)
 
 
@@ -151,7 +153,14 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
           fpr, tpr= roc_curve(y_true, y_score)[:2]
           auc_score = roc_auc_score(y_true, y_score)
           aucs.append(auc_score)
-          # report[str(i)]["auc"] = auc_score
+          #add AUC value to the report
+          support_class = report[str(i)].pop("support")
+          report[str(i)]["auc"] = auc_score
+          report[str(i)]['accuracy'] = ''
+
+          #moove support after auc column
+          report[str(i)]["support"] = int(support_class)
+
           supports.append(report.get(str(i), {}).get("support", 0))
 
 
@@ -162,7 +171,8 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
       plt.title('ROC Curves')
       plt.legend()
 
-      roc_filename = output_dir + os.path.splitext(args.out)[0] + "_roc.png"
+      fname = os.path.splitext(args.out)[0] + "_roc.png"
+      roc_filename = os.path.join(output_dir, fname)
       plt.savefig(roc_filename)
       plt.close()
 
@@ -176,7 +186,14 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
           report["weighted avg"]["auc"] = 0
 
       df_report = pd.DataFrame(report).transpose()
-      report_filename = output_dir + os.path.splitext(args.out)[0] + "_classification_report.csv"
+
+      df_report.loc['accuracy'] = ''
+
+      df_report.loc['accuracy','accuracy']=report['accuracy']
+      df_report.loc['accuracy','support']= df_report.loc['weighted avg','support']
+
+      fn = os.path.splitext(args.out)[0] + "_classification_report.csv"
+      report_filename = os.path.join(output_dir, fn)
       df_report.to_csv(report_filename)
 
       # Extraction of the score (AUC or F1)
