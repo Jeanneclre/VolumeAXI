@@ -102,7 +102,7 @@ class Net(pl.LightningModule):
             self.model = monai.networks.nets.DenseNet(spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
         if self.hparams.base_encoder == 'SEResNet50':
             self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
-        elif self.hparams.base_encoder == 'ResNet':#Jeanne
+        elif self.hparams.base_encoder == 'ResNet':
             self.model = monai.networks.nets.ResNet(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
         elif self.hparams.base_encoder == 'resnet18':
            self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)

@@ -187,7 +187,7 @@ def main(args):
             data = DataModule(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
                               train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
 
-            if args.model is not None:
+            if args.model is not None and i==0:
                 model = Net.load_from_checkpoint(args.model, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
             else:
                 model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
@@ -233,7 +233,8 @@ def main(args):
             devices=torch.cuda.device_count(),
             accelerator="gpu",
             strategy=DDPStrategy(find_unused_parameters=False),
-            log_every_n_steps=args.log_every_n_steps
+            log_every_n_steps=args.log_every_n_steps,
+            precision=16, # reduce memory usage
         )
 
 
