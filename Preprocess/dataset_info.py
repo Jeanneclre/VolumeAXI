@@ -19,6 +19,9 @@ def count_classes(csv_file,word_class='Classification',dict_classes={}):
     classes = {}
     output_file = csv_file.split('.')[0] + '_classes.csv'
 
+    # remove rows with empty label
+    reader = reader.dropna(subset=[word_class])
+
     for index, row in reader.iterrows():
         #if key_name is already an integer, count the number of similar int
         if isinstance(row[word_class],int):

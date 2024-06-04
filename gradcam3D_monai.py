@@ -16,6 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from loaders.cleft_dataset import BasicDataset
+from useful_readibility import printBlue, printRed, printGreen
 
 """
 Script to visualize Grad-CAM for 3D images using MONAI library.
@@ -125,13 +126,11 @@ def plot_gradcam(image1, image2,image3, slice_index,cam_save_dir, class_index, p
 
     plt.subplot(1, 3, 3)
     plt.imshow(image3[slice_index], cmap='jet')
-
     plt.title(f'GradCam sum rgb')
     plt.axis('off')
 
     if args.show_plots:
         plt.show()
-
 
     # Save individual figures
     plt.savefig(f'{cam_save_dir}/{patient_name}_classIdx_{class_index}_slice_{slice_index}.png')
@@ -218,9 +217,9 @@ def main(args):
 
 
     for batch,(X,y) in pbar:
-
+        printBlue(f'Batch: {batch}')
         data= X.cuda()
-
+        cam_normalized,cam_sum_norm=0,0
         cam_normalized, cam_sum_norm = get_cam_sum(data,model,class_index,layer_name)
         original_img_np= data.squeeze().detach().cpu().numpy()
 
@@ -229,7 +228,10 @@ def main(args):
             patient_name_list = os.path.basename(img_path[0]).split('_')
 
         else:
-            patient_name_list = os.path.basename(df.loc[batch]['Path']).split('_')
+            patient_name_list = os.path.basename(df.iloc[batch]['Path']).split('_')
+
+            printBlue(f'Patient name list: {patient_name_list}')
+
 
         if "MB" in patient_name_list :
             patient_name = patient_name_list[0] + '_' + "MB"
@@ -240,21 +242,20 @@ def main(args):
         else:
             patient_name = patient_name_list[0]
 
-        plot_gradcam(original_img_np, cam_normalized, cam_sum_norm, args.slice_idx, cam_save_dir, class_index, patient_name,args)
+        cam_sum_norm_plot = cam_sum_norm
+        plot_gradcam(original_img_np, cam_normalized, cam_sum_norm_plot, args.slice_idx, cam_save_dir, class_index, patient_name,args)
 
         # Save the CAM as a Nifti image in grayscale levels
         if args.csv_test is not None:
             true_class = df.loc[batch][args.class_column]
             predicted_class = df.loc[batch][args.pred_column]
+            img_fn = df.loc[batch][args.img_column]
 
         else:
             true_class = 'X'
             predicted_class = 'X'
-        if args.csv_test is not None:
-            img_fn = df.loc[batch][args.img_column]
-        else:
             img_fn = args.img_path
-        patient_name = os.path.basename(img_fn).split('_')[0]
+        # patient_name = os.path.basename(img_fn).split('_')[0]
 
         #Save GradCam
         img = sitk.ReadImage(os.path.join(args.mount_point, img_fn))
@@ -265,6 +266,15 @@ def main(args):
 
         sitk.WriteImage(saved_cam2, f'{cam_save_dir}/{patient_name}_classIdx_{class_index}_trueClass_{true_class}_predClass_{predicted_class}.nii.gz')
 
+        # Save the original image X
+        saved_img = sitk.GetImageFromArray(original_img_np)
+        img_cam = sitk.ReadImage(f'{cam_save_dir}/{patient_name}_classIdx_{class_index}_trueClass_{true_class}_predClass_{predicted_class}.nii.gz')
+        # give direction from saved_cam2
+        saved_img.SetSpacing(img_cam.GetSpacing())
+        saved_img.SetOrigin(img_cam.GetOrigin())
+        saved_img.SetDirection(img_cam.GetDirection())
+
+        sitk.WriteImage(saved_img, f'{cam_save_dir}/{patient_name}_classIdx_{class_index}_trueClass_{y}_predClass_{predicted_class}_original.nii.gz')
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser(description='Classification Visualization Volumes')
@@ -279,13 +289,13 @@ if __name__== "__main__":
     group.add_argument('--img_path', type=str, help='Path to the image to load')
 
     parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="./")
-    parser.add_argument('--model_path', help='Model path to use', type=str, default='Training_Left/SEResNet50/Models/epoch_200-val_loss_0.607.ckpt')
+    parser.add_argument('--model_path', help='Model path to use', type=str, default='')
     parser.add_argument('--out', help='Output folder with vizualisation files', type=str, default="Training_Left/SEResNet50/Predictions/GRADCAM/onebyone")
 
     parser.add_argument('--img_size', help='Image size of the dataset', type=int, default=256)
     parser.add_argument('--nb_classes', help='Number of classes', type=int, default=3)
     parser.add_argument('--class_index', help='Class index for GradCAM', type=int, default=1)
-    parser.add_argument('--layer_name', help='Layer name for GradCAM', nargs="+", default=['model.layer2','model.layer3','model.layer4'])
+    parser.add_argument('--layer_name', help='Layer name for GradCAM', nargs="+", default=['model.layer4'])
 
     parser.add_argument('--base_encoder', type=str, default="SEResNet50", help='Type of base encoder')
     parser.add_argument('--show_plots', help='Show plots', type=bool, default=False)

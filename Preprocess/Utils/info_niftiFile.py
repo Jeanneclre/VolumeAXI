@@ -65,4 +65,6 @@ if __name__=="__main__":
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
+    if not os.path.exists(args.input):
+        raise ValueError(f"Input folder {args.input} does not exist")
     get_nifti_info_folder(args)

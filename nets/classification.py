@@ -97,14 +97,15 @@ class Net(pl.LightningModule):
 
         self.loss = nn.CrossEntropyLoss(weight=class_weights)
         self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.hparams.num_classes)
+        self.softmax = nn.Softmax(dim=1)
 
         if self.hparams.base_encoder == 'DenseNet':
-            self.model = monai.networks.nets.DenseNet(spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
+            self.model = monai.networks.nets.DenseNet(spatial_dims=3, in_channels=1,out_channels=self.hparams.num_classes)
         if self.hparams.base_encoder == 'SEResNet50':
             self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
-        elif self.hparams.base_encoder == 'ResNet':
-            self.model = monai.networks.nets.ResNet(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
-        elif self.hparams.base_encoder == 'resnet18':
+        # elif self.hparams.base_encoder == 'ResNet':
+        #     self.model = monai.networks.nets.ResNet(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
+        elif self.hparams.base_encoder == 'resnet18' or base_encoder=='ResNet':
            self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
         if base_encoder == 'efficientnet-b0' or base_encoder == 'efficientnet-b1' or base_encoder == 'efficientnet-b2' or base_encoder == 'efficientnet-b3' or base_encoder == 'efficientnet-b4' or base_encoder == 'efficientnet-b5' or base_encoder == 'efficientnet-b6' or base_encoder == 'efficientnet-b7' or base_encoder == 'efficientnet-b8':
            self.model = monai.networks.nets.EfficientNetBN(base_encoder, spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
@@ -126,6 +127,7 @@ class Net(pl.LightningModule):
         x, y = train_batch
         x = self(x)
 
+        x= self.softmax(x)
         loss = self.loss(x, y)
         self.log('train_loss', loss)
 
@@ -138,6 +140,7 @@ class Net(pl.LightningModule):
         x, y = val_batch
         x = self(x)
 
+        x= self.softmax(x)
         loss = self.loss(x, y)
         self.log('val_loss', loss, sync_dist=True)
 

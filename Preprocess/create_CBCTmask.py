@@ -18,16 +18,20 @@ def applyMask(image, mask, label,dilation_radius):
     Use the background value of the CBCT scan as the value where the mask is not applied.
 
     """
+
     mask_arr = sitk.GetArrayFromImage(mask)
 
     if label is not None:
+
         if len(label) > 1:
             for l in label:
                 l_int=int(l)
                 if l_int in np.unique(mask_arr):
                     mask_array = np.where(mask_arr == l_int, 1, 0)
-        elif label in np.unique(mask_arr):
-            mask_array = np.where(mask_array == label, 1, 0)
+
+        elif int(label[0]) in np.unique(mask_arr):
+            int_label = int(label[0])
+            mask_array = np.where(mask_arr == int_label, 1, 0)
 
 
         # pad the segmentation if not none to get a wider region of interest
@@ -93,7 +97,7 @@ if __name__== "__main__":
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
-    word_to_match = ['MB','ML']
+    word_to_match = ['MB','MR']
     cpt =0
 
     # Read the image from the input folder and the mask from from the mask folder

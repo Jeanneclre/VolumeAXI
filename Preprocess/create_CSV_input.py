@@ -33,6 +33,7 @@ def create_csv_input(input_folder, output_file, words_list=['_L','_R','_MB', '_M
         'Left':'_L',
         'Right':'_R'
     }
+
     # Get the list of files in the input folder
     files = os.listdir(input_folder)
 
@@ -46,6 +47,11 @@ def create_csv_input(input_folder, output_file, words_list=['_L','_R','_MB', '_M
         base_name = os.path.basename(file_name)
 
         patient_name = None
+        # To combine left and right in the same dataset
+        if "_MB" in base_name or "_ML" in base_name or "_MR" in base_name:
+            continue
+        #####
+
         for word in words_list:
             if str(word) in base_name:
                 # Extract the patient name and append it to the CSV data
@@ -59,12 +65,13 @@ def create_csv_input(input_folder, output_file, words_list=['_L','_R','_MB', '_M
 
         csv_data.append([file_path,patient_name])
 
+    len_csv = len(csv_data)
     # Write the CSV data to the output file
     with open(output_file, 'w', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(csv_data)
 
-    print(f"Created CSV file with {idx} patients: {output_file}")
+    print(f"Created CSV file with {len_csv} patients: {output_file}")
 
 def add_info(input_csv_path,label_csv,patient_column,label_column,words_list,side='Left'):
     '''
@@ -87,18 +94,24 @@ def add_info(input_csv_path,label_csv,patient_column,label_column,words_list,sid
         #     continue
         patient = row['Name']
 
-        # cpt=0
-        for word in words_list:
-            if word in patient:
-                if word == '_ML':
-                    patient = patient.replace('ML','R')
-                if word == '_MB' and side == 'Left':
-                    patient = patient.replace('MB','R')
+        # to create dataset for the left OR the right side
+        # for word in words_list:
+        #     if word in patient:
+        #         if word == '_ML':
+        #             patient = patient.replace('ML','R')
+        #         if word == '_MB' and side == 'Left':
+        #             patient = patient.replace('MB','R')
 
-                if word == '_MB' and side == 'Right':
-                    patient = patient.replace('MB','L')
-                if word == '_MR':
-                    patient = patient.replace('MR','L')
+        #         if word == '_MB' and side == 'Right':
+        #             patient = patient.replace('MB','L')
+        #         if word == '_MR':
+        #             patient = patient.replace('MR','L')
+
+        # To combine left and right in the same dataset
+        if "ML" in patient or "MR" in patient or "MB" in patient:
+            # next patient
+            continue
+
 
         # Check if the patient is in the label_csv
         if f'{patient}' in df_label[patient_column].values:
@@ -132,6 +145,6 @@ if __name__ =="__main__":
     args = parser.parse_args()
 
     if not os.path.exists(os.path.dirname(args.output)):
-        os.makedirs(args.output)
+        os.makedirs(os.path.dirname(args.output))
     create_csv_input(args.input_folder, args.output)
     add_info(args.output,args.label_file,args.patient_column,args.label_column,args.words_list,args.side)

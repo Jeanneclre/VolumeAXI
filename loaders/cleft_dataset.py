@@ -83,6 +83,7 @@ class DataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         if self.df_special is not None:
+            print('CONCATENATING SPECIAL DATASET')
             #concatenate the special dataset with the training dataset
             train_special_ds = torch.utils.data.ConcatDataset([self.train_ds, self.special_ds])
             return DataLoader(train_special_ds, batch_size=self.batch_size, num_workers=self.num_workers, persistent_workers=True, pin_memory=True, drop_last=self.drop_last, shuffle=True)

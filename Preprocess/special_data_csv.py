@@ -40,5 +40,7 @@ if __name__=="__main__":
     parser.add_argument('--csv_special', required=True, type=str, help='Special data CSV file')
     parser.add_argument('--output_csv', required=True, type=str, help='Output path to the CSV file')
     args = parser.parse_args()
+    if not os.path.exists(os.path.dirname(args.output_csv)):
+        os.makedirs(os.path.dirname(args.output_csv))
     main(args)
 

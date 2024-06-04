@@ -180,17 +180,36 @@ def main(args):
             nb_split_perEncoder+= nb_split_perEncoder
 
         base_encoder = args.base_encoder[idx_changeEncoder]
-        printBlue(f'base_encoder in uses {base_encoder}')
+        printBlue(f'base_encoder in use {base_encoder}')
 
 
         if args.seg_column is None:
             data = DataModule(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
                               train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
 
-            if args.model is not None and i==0:
-                model = Net.load_from_checkpoint(args.model, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+
+            #restart the training to the fold of the model then continue
+            if args.checkpoint is not None:
+                #find at what folder its stopped:
+                folder_last_model = os.path.dirname(args.checkpoint).split('/')[-1]
+                #take the int in the name fold_X
+                folder_nb_lm = int(folder_last_model.split('_')[-1])
+                if folder_nb_lm > i:
+                    continue
+                elif folder_nb_lm == i:
+                    prediction_folder = os.path.dirname(args.checkpoint).replace(folder_last_model,'Predictions')+f'/{folder_last_model}'
+                    if os.path.exists(prediction_folder):
+                        continue
+                    model = Net.load_from_checkpoint(args.checkpoint, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    ckpt_path = args.checkpoint
+                else:
+                    model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    ckpt_path = None
+            # if args.model is not None and i==0:
+            #     model = Net.load_from_checkpoint(args.model, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
             else:
                 model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                ckpt_path = None
 
             # torch.backends.cudnn.benchmark = True
 
@@ -238,7 +257,7 @@ def main(args):
         )
 
 
-        trainer.fit(model, datamodule=data, ckpt_path=args.checkpoint)
+        trainer.fit(model, datamodule=data, ckpt_path=ckpt_path)
         torch.cuda.empty_cache()
 
         #################################
