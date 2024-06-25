@@ -9,9 +9,9 @@ import SimpleITK as sitk
 
 import torch
 
-from nets.classification import Net, SegNet
-from loaders.cleft_dataset import DataModule, SegDataModule
-from transforms.volumetric import TrainTransforms, EvalTransforms,SpecialTransforms, SegTrainTransforms, SegEvalTransforms, NoTransform, NoEvalTransform
+from nets.classification import Net, NetTarget
+from loaders.cleft_dataset import DataModule, DataModuleT
+from transforms.volumetric import TrainTransforms, EvalTransforms,SpecialTransforms, NoTransform, NoEvalTransform
 import classification_predict
 import classification_eval_VAXI
 from useful_readibility import printRed, printGreen,printOrange, printBlue
@@ -93,6 +93,7 @@ def main(args):
     for cn, cl in enumerate(unique_classes):
         class_replace[int(cl)] = cn
     print(unique_classes, unique_class_weights, class_replace)
+    unique_class_weights = None
 
     #save the parameters of the model
     outpath_modelInfo = args.out + "/modelParams.csv"
@@ -184,9 +185,13 @@ def main(args):
 
 
         if args.seg_column is None:
-            data = DataModule(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
-                              train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
-
+            if args.mode == 'CV_2pred':
+                data = DataModuleT(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers,
+                                img_column=args.img_column, nb_classes=args.nb_classes, class_column1="Label_R", class_column2="Label_L",
+                                train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
+            else:
+                data = DataModule(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers,img_column=args.img_column,class_column=args.class_column,
+                                  train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,drop_last= False, seed=args.seed)
 
             #restart the training to the fold of the model then continue
             if args.checkpoint is not None:
@@ -200,24 +205,26 @@ def main(args):
                     prediction_folder = os.path.dirname(args.checkpoint).replace(folder_last_model,'Predictions')+f'/{folder_last_model}'
                     if os.path.exists(prediction_folder):
                         continue
-                    model = Net.load_from_checkpoint(args.checkpoint, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    if args.mode == 'CV_2pred':
+                        model = NetTarget.load_from_checkpoint(args.checkpoint, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    else:
+                        model = Net.load_from_checkpoint(args.checkpoint, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                     ckpt_path = args.checkpoint
                 else:
-                    model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    if args.mode == 'CV_2pred':
+                        model= NetTarget(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    else:
+                        model = Net(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                     ckpt_path = None
-            # if args.model is not None and i==0:
-            #     model = Net.load_from_checkpoint(args.model, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+
             else:
-                model = Net(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                if args.mode == 'CV_2pred':
+                    model= NetTarget(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                else:
+                    model = Net(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                 ckpt_path = None
 
-            # torch.backends.cudnn.benchmark = True
 
-        # else:
-        #     data = SegDataModule(df_train_inner, df_val,df_test, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers, img_column=args.img_column, class_column=args.class_column,
-        #                           train_transform=SegTrainTransforms(img_size), valid_transform=SegEvalTransforms(img_size),test_transform=SegEvalTransforms(img_size))
-
-        #     model = SegNet(args, num_classes=unique_classes.shape[0], class_weights=unique_class_weights, base_encoder=base_encoder)
 
         # Create a folder for each fold
         checkpoint_dir =args.out + f"/fold_{i}"
@@ -294,6 +301,13 @@ def main(args):
 
         prediction_args['seed']= args.seed
 
+        ## Prediction for 2 classes columns
+        prediction_args['mode']=args.mode
+        if args.mode == 'CV_2pred':
+            prediction_args['class_column1']= "Label_R"
+            prediction_args['class_column2']= "Label_L"
+            prediction_args['nb_classes']= args.nb_classes
+
         prediction_args= Namespace(**prediction_args)
         ext = os.path.splitext(outpath_test)[1]
         out_prediction = os.path.join(prediction_args.out, os.path.basename(best_model), os.path.basename(outpath_test).replace(ext, "_prediction" + ext))
@@ -310,10 +324,17 @@ def main(args):
         predict_csv_path = outdir_prediction + os.path.basename(outpath_test).replace(ext, "_prediction" + ext)
 
         evaluation_args['csv']= predict_csv_path
-        evaluation_args['csv_true_column']= args.class_column
         evaluation_args['csv_prediction_column']= "Prediction"
         evaluation_args['title']= f"Confusion matrix fold {i}"
         evaluation_args['out']=  f"fold_{i}_eval.png"
+
+        ## Evaluation for 2 classes columns
+        if args.mode == 'CV_2pred':
+            evaluation_args['csv_true_column']= "Label"
+            evaluation_args['mode']=args.mode
+            evaluation_args['diff']= ['_R','_L']
+        else:
+            evaluation_args['csv_true_column']= args.class_column
 
         evaluation_args= Namespace(**evaluation_args)
 
@@ -347,6 +368,7 @@ if __name__ == '__main__':
     parser.add_argument('--img_column', type=str, default='img', help='Name of image column')
     parser.add_argument('--class_column', type=str, default='Label', help='Name of class column')
     parser.add_argument('--seg_column', type=str, default=None, help='Name of segmentation column')
+    parser.add_argument('--nb_classes', type=int, default=6, help='Number of classes')
     parser.add_argument('--base_encoder', nargs="+", default='efficientnet-b0', help='Type of base encoder')
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
     parser.add_argument('--epochs', help='Max number of epochs', type=int, default=400)
@@ -373,6 +395,9 @@ if __name__ == '__main__':
 
     # seed
     parser.add_argument('--seed', help='Seed', type=int, default=42)
+
+    #mode
+    parser.add_argument('--mode', help='Mode for training', type=str, default='CV', choices=['CV', 'CV_2pred'])
 
     #Cross validation
     cv_group = parser.add_argument_group('Cross validation')

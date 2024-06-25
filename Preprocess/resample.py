@@ -35,19 +35,35 @@ def resample_image_with_custom_size(img,segmentation, args):
     axes_to_pad_Up = [0]*img.GetDimension()
     axes_to_pad_Down = [0]*img.GetDimension()
     for dim in range(img.GetDimension()):
-        if roi_img.GetSize()[dim] < target_size[dim]:
-            pad_size = target_size[dim] - roi_img.GetSize()[dim]
-            pad_size_Up = pad_size // 2
-            pad_size_Down = pad_size - pad_size_Up
-            axes_to_pad_Up[dim] = pad_size_Up
-            axes_to_pad_Down[dim] = pad_size_Down
-            pad_filter = sitk.ConstantPadImageFilter()
-            # Get the minimum value of the image
-            min_val = float(np.min(sitk.GetArrayFromImage(img)))
-            pad_filter.SetConstant(min_val)
-            pad_filter.SetPadLowerBound(axes_to_pad_Down)
-            pad_filter.SetPadUpperBound(axes_to_pad_Up)
-            img_padded = pad_filter.Execute(roi_img)
+        if args.crop == False:
+            if roi_img.GetSize()[dim] < target_size[dim]:
+                pad_size = target_size[dim] - roi_img.GetSize()[dim]
+                pad_size_Up = pad_size // 2
+                pad_size_Down = pad_size - pad_size_Up
+                axes_to_pad_Up[dim] = pad_size_Up
+                axes_to_pad_Down[dim] = pad_size_Down
+                pad_filter = sitk.ConstantPadImageFilter()
+                # Get the minimum value of the image
+                min_val = float(np.min(sitk.GetArrayFromImage(img)))
+                pad_filter.SetConstant(min_val)
+                pad_filter.SetPadLowerBound(axes_to_pad_Down)
+                pad_filter.SetPadUpperBound(axes_to_pad_Up)
+                img_padded = pad_filter.Execute(roi_img)
+
+            # if roi_img.GetSize()[dim] > target_size[dim]:
+            #     # Crop the image
+            #     crop_size_up = (roi_img.GetSize()[dim] - target_size[dim]) // 2
+            #     crop_size_down = roi_img.GetSize()[dim] - target_size[dim] - crop_size_up
+            #     axes_to_pad_Up[dim] = crop_size_up
+            #     axes_to_pad_Down[dim] = crop_size_down
+            #     crop_filter = sitk.CropImageFilter()
+            #     crop_filter.SetLowerBoundaryCropSize(axes_to_pad_Up)
+            #     crop_filter.SetUpperBoundaryCropSize(axes_to_pad_Down)
+            #     img_padded = crop_filter.Execute(roi_img)
+
+            # #check if the image is the same size as the target size
+            # if img_padded.GetSize()[dim] == target_size[dim]:
+            #     img_padded = img_padded
 
         else:
             img_padded = roi_img
@@ -66,8 +82,6 @@ def resample_fn(img, args):
     pixel_dimension = args.pixel_dimension
     center = args.center
 
-    print('FIT SPACING:', fit_spacing)
-    print('ISO SPACING:', iso_spacing)
     # if(pixel_dimension == 1):
     #     zeroPixel = 0
     # else:
@@ -114,6 +128,7 @@ def resample_fn(img, args):
     print("Input size:", size)
     print("Input spacing:", spacing)
     print("Output size:", output_size)
+
     print("Output spacing:", output_spacing)
     print("Output origin:", output_origin)
 
@@ -148,6 +163,7 @@ def Resample(img_filename, segm, args):
         seg =   sitk.ReadImage(segm)
         return resample_image_with_custom_size(img, seg, args)
     else:
+
         return resample_fn(img, args)
 
 
@@ -181,7 +197,8 @@ if __name__ == "__main__":
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=True)
     transform_group.add_argument('--center', type=bool, help='Center the image in the space', default=True)
     transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=False)
-    transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=False)
+    transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=True)
+    transform_group.add_argument('--crop', type=bool, help='Only Crop the image to the segmentation (used only if args.segmentation is)', default=False)
 
     img_group = parser.add_argument_group('Image parameters')
     img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=3)
@@ -333,7 +350,15 @@ if __name__ == "__main__":
             if args.size is not None:
                 img = Resample(fobj["img"], args.segmentation, args)
             else:
+
                 img = sitk.ReadImage(fobj["img"])
+                size = img.GetSize()
+                physical_size = np.array(size)*np.array(img.GetSpacing())
+                new_size = [int(physical_size[i]//args.spacing[i]) for i in range(img.GetDimension())]
+                args.size = new_size
+                img = Resample(fobj["img"],args.segmentation, args)
+
+
 
             print("Writing:", fobj["out"])
             writer = sitk.ImageFileWriter()
@@ -359,5 +384,4 @@ if __name__ == "__main__":
                     writer.SetFileName(fobj[key]['out'])
                     writer.UseCompressionOn()
                     writer.Execute(img)
-
 

@@ -89,19 +89,21 @@ class NoEvalTransform:
 class TrainTransforms:
     def __init__(self, size=256, pad=10):
         # image augmentation functions
+        calcul_rotate = math.pi/4
+        print("Calcul Rotate", calcul_rotate)
         self.train_transform = Compose(
             [
                 EnsureChannelFirst(channel_dim='no_channel'),
                 # RandFlip(prob=0.5),
-                RandRotate(prob=0.5, range_x=math.pi, range_y=math.pi, range_z=math.pi, mode="nearest", padding_mode='zeros'),
+                RandRotate(prob=0.5, range_x=calcul_rotate, range_y=calcul_rotate, range_z=calcul_rotate, mode="nearest", padding_mode='zeros'),
                 SpatialPad(spatial_size=size + pad),
                 RandSpatialCrop(roi_size=size, random_size=False),
                 RandGaussianNoise(prob=0.5),
-                RandGaussianSmooth(prob=0.5),
+                # RandGaussianSmooth(prob=0.5),
                 # ScaleIntensityRangePercentiles(2,99,0,1),
                 ScaleIntensity(0,1),
                 RandAdjustContrast(prob=0.5),
-                # NormalizeIntensity(),
+                # NormalizeIntensity(subtrahend=0,divisor=10),
                 ToTensor(dtype=torch.float32, track_meta=False)
             ]
         )

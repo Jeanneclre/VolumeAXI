@@ -42,6 +42,7 @@ def applyMask(image, mask, label,dilation_radius):
 
             # Define the structuring element for dilation
             kernel = sitk.sitkBall
+            kernel=sitk.sitkBox
             radius = dilation_radius
             dilate_filter = sitk.BinaryDilateImageFilter()
             dilate_filter.SetKernelType(kernel)
@@ -88,7 +89,7 @@ if __name__== "__main__":
     parser = argparse.ArgumentParser(description="Apply a mask to an image")
     parser.add_argument("--img", help="Input image")
     parser.add_argument("--mask", help="Input mask")
-    parser.add_argument("--label", nargs='+', help="Label to apply the mask",default=1)
+    parser.add_argument("--label", nargs='+', help="Label to apply the mask. Ex: 1 or 1 2",required=True)
     parser.add_argument("--output", help="Output image")
     parser.add_argument("--dilatation_radius", type=int, help="Radius of the dilatation to apply to the mask",default=None)
     args = parser.parse_args()

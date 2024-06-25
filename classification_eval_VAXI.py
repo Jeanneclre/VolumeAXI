@@ -5,7 +5,7 @@ import os
 import json
 import sys
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve, auc, roc_auc_score
+from sklearn.metrics import roc_curve, auc, roc_auc_score,f1_score,precision_score,recall_score,accuracy_score
 from sklearn.metrics import classification_report
 import pandas as pd
 
@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import itertools
 import pickle
 
+from useful_readibility import printRed, printBlue,printGreen
 
 
 COLORS={
@@ -118,7 +119,6 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
     confusion_filename = os.path.join(output_dir,fn_cf)
     fig.savefig(confusion_filename)
 
-
     # Plot normalized confusion matrix
     fig2 = plt.figure(figsize=args.figsize)
     cm = plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, title=args.title + ' - normalized')
@@ -201,6 +201,120 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
       return score
 
 
+def ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr):
+  '''
+  function to evaluate a multi-label column classification model.
+  Test file example:
+  Path,            Name,             Label1,  Label2, Pred1,  Pred2
+  /path/to/image1, image1,           1,       3,      1,      3
+  /path/to/image2, image2,           None,       4,   None,   4
+  /path/to/image3, image3,           2,       5,      2,      4
+  '''
+  input_dir = os.path.dirname(args.csv)
+  output_dir = os.path.join(args.mount_point, input_dir)
+  output_dir= output_dir
+
+  if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+  if '_' in args.diff[0]:
+    column1_nm = args.csv_true_column +  args.diff[0]
+    column2_nm = args.csv_true_column +  args.diff[1]
+
+    pred1_nm = args.csv_prediction_column + args.diff[0]
+    pred2_nm = args.csv_prediction_column + args.diff[1]
+
+  else:
+    column1_nm = args.csv_true_column + ' ' + args.diff[0]
+    column2_nm = args.csv_true_column + ' ' + args.diff[1]
+
+    pred1_nm = args.csv_prediction_column + ' ' + args.diff[0]
+    pred2_nm = args.csv_prediction_column + ' ' + args.diff[1]
+
+
+  #concatenate the 2 columns to get the class names
+  df_combined = pd.concat([df[column1_nm], df[column2_nm]])
+  class_names = pd.unique(df_combined)
+
+  #remove nan
+  class_names = [x for x in class_names if str(x) != 'nan']
+  class_names.sort()
+
+
+  print("Class names:", class_names)
+  # Count false predictions (case where the true label is None and the prediction is not None)
+  fail_fp_R=0
+  fail_fp_L=0
+  # Count wrong predictions (case where the true label is not None and the prediction is None)
+  fail_wp_R=0
+  fail_wp_L=0
+  for idx,row in df.iterrows():
+    if str(row[column1_nm]) != 'nan' and str(row[pred1_nm]) != 'nan':
+
+      y_true_arr.append(str(row[column1_nm]))
+      y_pred_arr.append(str(row[pred1_nm]))
+    elif str(row[column1_nm]) !='nan' and str(row[pred1_nm]) == 'nan':
+      fail_wp_R+=1
+    elif str(row[column1_nm])=='nan' and str(row[pred1_nm]) != 'nan':
+      fail_fp_R+=1
+    else:
+      pass
+
+
+  for idx,row in df.iterrows():
+    if str(row[column2_nm]) != 'nan' and str(row[pred2_nm]) != 'nan':
+      y_true_arr.append(str(row[column2_nm]))
+      y_pred_arr.append(str(row[pred2_nm]))
+    elif str(row[column2_nm]) !='nan' and str(row[pred2_nm]) == 'nan':
+      fail_wp_L+=1
+    elif str(row[column2_nm])=='nan' and str(row[pred2_nm]) != 'nan':
+      fail_fp_L+=1
+    else:
+      pass
+
+  report = classification_report(y_true_arr, y_pred_arr, output_dict=True, zero_division=1)
+
+  cnf_matrix = confusion_matrix(y_true_arr, y_pred_arr)
+  np.set_printoptions(precision=3)
+
+  # Plot non-normalized confusion matrix
+  fig = plt.figure(figsize=args.figsize)
+  plot_confusion_matrix(cnf_matrix, classes=class_names, title=args.title)
+
+  fn_cf = os.path.splitext(args.out)[0] + "_confusion.png"
+  confusion_filename = os.path.join(output_dir,fn_cf)
+  #add legend with the number of failed predictions
+  fig.text(0.25, 0.01, f'Predicted ghost: {fail_fp_R} ({args.diff[0]}), {fail_fp_L} ({args.diff[1]}), Missed Prediction: {fail_wp_R} ({args.diff[0]}), {fail_wp_L} ({args.diff[1]})', ha='center', va='center', color='red')
+  fig.savefig(confusion_filename)
+
+  # Plot normalized confusion matrix
+  fig2 = plt.figure(figsize=args.figsize)
+  cm = plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, title=args.title + ' - normalized')
+
+  fn =os.path.splitext(args.out)[0] + "_norm_confusion.png"
+  norm_confusion_filename = os.path.join(output_dir, fn)
+  print('norm_confusion_filename',norm_confusion_filename )
+  fig2.text(0.25, 0.01, f'Predicted ghost: {fail_fp_R} ({args.diff[0]}), {fail_fp_L} ({args.diff[1]}), Missed Prediction: {fail_wp_R} ({args.diff[0]}), {fail_wp_L} ({args.diff[1]})', ha='center', va='center',color='red')
+  fig2.savefig(norm_confusion_filename)
+
+  # save report to csv
+
+  df_report = pd.DataFrame(report).transpose()
+  # if 'accuracy'
+  if 'accuracy' in df_report.columns:
+    df_report.loc['accuracy'] = ''
+
+    df_report.loc['accuracy','accuracy']=report['accuracy']
+    df_report.loc['accuracy','support']= df_report.loc['weighted avg','support']
+
+  fn = os.path.splitext(args.out)[0] + "_classification_report.csv"
+  report_filename = os.path.join(output_dir, fn)
+  df_report.to_csv(report_filename)
+
+  args.eval_metric = 'F1'
+  score = choose_score(args,report)
+  return score
+
 
 def main(args):
     y_true_arr = []
@@ -212,8 +326,11 @@ def main(args):
     else:
         df = pd.read_parquet(path_to_csv)
 
-    score = classification_eval(df, args, y_true_arr, y_pred_arr)
-
+    if args.mode == 'CV':
+      score = classification_eval(df, args, y_true_arr, y_pred_arr)
+      pass
+    elif args.mode == 'CV_2pred':
+      score = ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr)
 
     return score
 
@@ -224,15 +341,22 @@ def get_argparse():
   parser = argparse.ArgumentParser(description='Evaluate classification result', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
   parser.add_argument('--csv', type=str, help='CSV file', required=True)
-  parser.add_argument('--csv_true_column', type=str, help='Which column to do the stats on', default="class")
-  parser.add_argument('--csv_prediction_column', type=str, help='csv prediction class', default='pred')
+  parser.add_argument('--csv_true_column', type=str, help='Which column to do the stats on, if Multi like Label L and Label R, write Label', default="class")
+  parser.add_argument('--csv_prediction_column', type=str, help='csv prediction class, if Multi write common word', default='pred')
 
   parser.add_argument('--title', type=str, help='Title for the image', default='Confusion matrix')
   parser.add_argument('--figsize', type=str, nargs='+', help='Figure size', default=(8, 8))
   parser.add_argument('--eval_metric', type=str, help='Score you want to choose for picking the best model : F1 or AUC', default='F1', choices=['F1', 'AUC'])
   parser.add_argument('--mount_point', type=str, help='Mount point for the data', default='./')
 
-  parser.add_argument('--out', type=str, help='Output filename for the plot', default="out.png")
+  parser.add_argument('--out', type=str, help='Output filename for the plot', default="Final_evaluation.png")
+
+  parser.add_argument('--mode', type=str, help='Mode of the evaluation', default='CV', choices=['CV', 'CV_2pred'])
+  # For MultiLabel evaluation
+  parser.add_argument('--diff',nargs='+', help='Differentiator between the 2 Label/predict columns. Ex: Label 1, Label 2 -->  1 2', default=['_R','_L'])
+
+
+
 
   return parser
 
@@ -240,9 +364,8 @@ def get_argparse():
 if __name__ == "__main__":
   parser = get_argparse()
   args = parser.parse_args()
+
   main(args)
-
-
 
 
 

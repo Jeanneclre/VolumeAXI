@@ -158,7 +158,7 @@ def get_cam_sum(data,model,class_index, layers):
 
 def main(args):
     # Parameters
-    nb_of_classes = args.nb_classes
+    nb_of_classes = args.nb_class
     class_index = args.class_index
     layer_name = args.layer_name
     out_dir = args.out
@@ -169,7 +169,10 @@ def main(args):
         unique_classes = np.unique(df[args.class_column])
         class_replace = {}
         for cn, cl in enumerate(unique_classes):
-            class_replace[int(cl)] = cn
+            if pd.isna(cl) :
+                continue
+            else:
+                class_replace[int(cl)] = cn
         df[args.class_column] = df[args.class_column].replace(class_replace)
         # img_path = ['Preprocess/Preprocessed_data/Resampled/Left/MN080_scan_MB_Masked.nii.gz']
         # dataset = CustomDataset(img_path, transforms=EvalTransforms(256))
@@ -211,7 +214,7 @@ def main(args):
         given_path = False
 
     # Save directories
-    cam_save_dir = f'{out_dir}/cam_images'
+    cam_save_dir = f'{out_dir}/class{class_index}'
     if os.path.exists(cam_save_dir) is False:
         os.makedirs(cam_save_dir)
 
@@ -250,6 +253,8 @@ def main(args):
             true_class = df.loc[batch][args.class_column]
             predicted_class = df.loc[batch][args.pred_column]
             img_fn = df.loc[batch][args.img_column]
+            #extract the value from the tensor
+            true_class = true_class.item()
 
         else:
             true_class = 'X'
@@ -284,22 +289,29 @@ if __name__== "__main__":
     group.add_argument('--csv_test', type=str, help='Testing set csv to load')
     parser.add_argument('--img_column', type=str, default='Path', help='Name of image column')
     parser.add_argument('--class_column', type=str, default='Label', help='Name of class column with the labels')
-    parser.add_argument('--pred_column', type=str, default='Predictions', help='Name of class column with the predicted labels')
+    parser.add_argument('--pred_column', type=str, default='pred', help='Name of class column with the predicted labels')
 
     group.add_argument('--img_path', type=str, help='Path to the image to load')
 
-    parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="./")
     parser.add_argument('--model_path', help='Model path to use', type=str, default='')
-    parser.add_argument('--out', help='Output folder with vizualisation files', type=str, default="Training_Left/SEResNet50/Predictions/GRADCAM/onebyone")
+    parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="./")
+    parser.add_argument('--out', help='Output folder with vizualisation files', type=str, default="./GRADCAM")
 
-    parser.add_argument('--img_size', help='Image size of the dataset', type=int, default=256)
-    parser.add_argument('--nb_classes', help='Number of classes', type=int, default=3)
+
+    parser.add_argument('--img_size', help='Image size of the dataset', type=int, default=224)
+    parser.add_argument('--nb_class', help='Number of classes', type=int, default=3)
     parser.add_argument('--class_index', help='Class index for GradCAM', type=int, default=1)
+
+    parser.add_argument('--base_encoder', type=str, default="DenseNet201", help='Type of base encoder')
     parser.add_argument('--layer_name', help='Layer name for GradCAM', nargs="+", default=['model.layer4'])
 
-    parser.add_argument('--base_encoder', type=str, default="SEResNet50", help='Type of base encoder')
     parser.add_argument('--show_plots', help='Show plots', type=bool, default=False)
     parser.add_argument('--slice_idx', help='Slice index to plot', type=int, default=120)
     args = parser.parse_args()
+
+    #if args.model == '': print error message
+    if args.model_path == '':
+        printRed('Please provide a model path')
+        exit(1)
 
     main(args)

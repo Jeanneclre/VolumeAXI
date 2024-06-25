@@ -70,5 +70,20 @@ if __name__ == "__main__":
         "nan": '' ,
     }
 
+    dict_classes ={
+        None: 0,
+        0: 1,
+        1: 2,
+        2: 3,
+
+    }
+
+    # dict_classes = {
+    #     None: 4,
+    #     3: 5,
+    #     4: 6,
+    #     5: 7,
+    # }
+
     classes = count_classes(args.input,args.class_column,dict_classes)
     print(classes)
