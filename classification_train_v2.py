@@ -9,8 +9,8 @@ import SimpleITK as sitk
 
 import torch
 
-from nets.classification import Net, NetTarget
-from loaders.cleft_dataset import DataModule, DataModuleT
+from nets.classification import Net, NetTarget, NetFC
+from loaders.dataset import DataModule, DataModuleT, DataModuleFC
 from transforms.volumetric import TrainTransforms, EvalTransforms,SpecialTransforms, NoTransform, NoEvalTransform
 import classification_predict
 import classification_eval_VAXI
@@ -87,7 +87,22 @@ def main(args):
     df_filtered_train = df_filtered_train.reset_index(drop=True)
 
     unique_classes = np.unique(df_filtered_train[args.class_column])
-    unique_class_weights = np.array(class_weight.compute_class_weight(class_weight='balanced', classes=unique_classes, y=df_filtered_train[args.class_column]))
+
+    # Get the class weights from the training DataFrame
+    class_weights = df_filtered_train[args.class_column].value_counts().to_dict()
+
+    # Compute the weights and create a dictionary with the class as key and the weight value
+    n_samples = len(df_filtered_train[args.class_column])
+    class_weights = {k: n_samples / (unique_classes.shape[0] * v) for k, v in sorted(class_weights.items(), key=lambda item: item[0])}
+
+    # Calculate unique class weights using scikit-learn's compute_class_weight
+    unique_class_weights = np.array(
+        class_weight.compute_class_weight(
+            class_weight=class_weights,
+            classes=unique_classes,
+            y=df_filtered_train[args.class_column]
+        )
+    )
 
     class_replace = {}
     for cn, cl in enumerate(unique_classes):
@@ -189,6 +204,11 @@ def main(args):
                 data = DataModuleT(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers,
                                 img_column=args.img_column, nb_classes=args.nb_classes, class_column1="Label_R", class_column2="Label_L",
                                 train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
+
+            elif args.mode == 'CV_2fclayer':
+                data = DataModuleFC(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers,
+                                img_column=args.img_column, nb_classes=args.nb_classes, class_column1="Label_R", class_column2="Label_L",
+                                train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,seed=args.seed)
             else:
                 data = DataModule(df_train_inner, df_val,df_test, df_filtered_special, mount_point=args.mount_point, batch_size=args.batch_size, num_workers=args.num_workers,img_column=args.img_column,class_column=args.class_column,
                                   train_transform= TrainTransforms(img_size,pad_size), valid_transform=EvalTransforms(img_size),test_transform=EvalTransforms(img_size), special_transform = special_tf,drop_last= False, seed=args.seed)
@@ -207,12 +227,18 @@ def main(args):
                         continue
                     if args.mode == 'CV_2pred':
                         model = NetTarget.load_from_checkpoint(args.checkpoint, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    elif args.mode == 'CV_2fclayer':
+                        model = NetFC.load_from_checkpoint(args.checkpoint, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                     else:
                         model = Net.load_from_checkpoint(args.checkpoint, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+
+
                     ckpt_path = args.checkpoint
                 else:
                     if args.mode == 'CV_2pred':
                         model= NetTarget(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                    elif args.mode == 'CV_2fclayer':
+                        model= NetFC(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                     else:
                         model = Net(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                     ckpt_path = None
@@ -220,8 +246,11 @@ def main(args):
             else:
                 if args.mode == 'CV_2pred':
                     model= NetTarget(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+                elif args.mode == 'CV_2fclayer':
+                    model= NetFC(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
                 else:
                     model = Net(args, num_classes=args.nb_classes, class_weights=unique_class_weights, base_encoder=base_encoder,seed=args.seed)
+
                 ckpt_path = None
 
 
@@ -238,24 +267,22 @@ def main(args):
 
         early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=args.patience, verbose=True, mode="min")
 
-        try:
-            logger,image_logger = tensorboard_neptune_logger(args)
-            if logger is None:
-                raise ValueError("No logger")
-            if image_logger is None:
-                raise ValueError("No image logger")
-            if logger is None and image_logger is None:
-                raise ValueError("No logger and image logger")
+        callbacks = [early_stop_callback, checkpoint_callback]
 
-        except Exception as e:
-            printRed('Error in logger setup')
-            print(e)
-            return
+        if args.neptune_project is not None or args.tb_dir is not None:
+            logger,image_logger = tensorboard_neptune_logger(args)
+            callbacks = [early_stop_callback, checkpoint_callback, image_logger]
+        else:
+            logger = None
+            image_logger = None
+
+        if image_logger is None:
+            callbacks = [early_stop_callback, checkpoint_callback]
 
         trainer = Trainer(
             logger=logger,
             max_epochs=args.epochs,
-            callbacks=[early_stop_callback, checkpoint_callback,image_logger],
+            callbacks=callbacks,
             devices=torch.cuda.device_count(),
             accelerator="gpu",
             strategy=DDPStrategy(find_unused_parameters=False),
@@ -302,8 +329,9 @@ def main(args):
         prediction_args['seed']= args.seed
 
         ## Prediction for 2 classes columns
-        prediction_args['mode']=args.mode
-        if args.mode == 'CV_2pred':
+        prediction_args['mode'] = args.mode
+        prediction_args['nb_classes']= args.nb_classes
+        if args.mode == 'CV_2fclayer':
             prediction_args['class_column1']= "Label_R"
             prediction_args['class_column2']= "Label_L"
             prediction_args['nb_classes']= args.nb_classes
@@ -321,24 +349,53 @@ def main(args):
         #################################
 
         evaluation_args = get_argparse_dict(classification_eval_VAXI.get_argparse())
+        evaluation_argsR = get_argparse_dict(classification_eval_VAXI.get_argparse())
         predict_csv_path = outdir_prediction + os.path.basename(outpath_test).replace(ext, "_prediction" + ext)
-
         evaluation_args['csv']= predict_csv_path
-        evaluation_args['csv_prediction_column']= "Prediction"
-        evaluation_args['title']= f"Confusion matrix fold {i}"
-        evaluation_args['out']=  f"fold_{i}_eval.png"
 
-        ## Evaluation for 2 classes columns
-        if args.mode == 'CV_2pred':
-            evaluation_args['csv_true_column']= "Label"
-            evaluation_args['mode']=args.mode
-            evaluation_args['diff']= ['_R','_L']
+        if args.mode == 'CV_2fclayer':
+            #Call for the right side
+            evaluation_argsR['csv']= predict_csv_path
+            evaluation_argsR['csv_prediction_column']= "Prediction_R"
+            evaluation_argsR['title']= f"Confusion matrix fold {i} Right"
+            evaluation_argsR['out']=  f"fold_{i}_eval_R.png"
+            evaluation_argsR['csv_true_column']= "Label_R"
+
+            evaluation_argsR= Namespace(**evaluation_argsR)
+            metricR = classification_eval_VAXI.main(evaluation_argsR) # AUC or F1
+
+            #Call for the left side
+            evaluation_args['csv_prediction_column']= "Prediction_L"
+            evaluation_args['title']= f"Confusion matrix fold {i} Left"
+            evaluation_args['out']=  f"fold_{i}_eval_L.png"
+            evaluation_args['csv_true_column']= "Label_L"
+
+            evaluation_args= Namespace(**evaluation_args)
+            metricL = classification_eval_VAXI.main(evaluation_args)
+
+            avg_metric = (metricR+metricL)/2
+
+            metric = avg_metric
+
+
         else:
-            evaluation_args['csv_true_column']= args.class_column
+            evaluation_args['csv_prediction_column']= "Prediction"
+            evaluation_args['title']= f"Confusion matrix fold {i}"
+            evaluation_args['out']=  f"fold_{i}_eval.png"
 
-        evaluation_args= Namespace(**evaluation_args)
+            ## Evaluation for 2 classes columns
+            if args.mode == 'CV_2pred':
+                evaluation_args['csv_true_column']= "Label"
+                evaluation_args['mode']=args.mode
+                evaluation_args['diff']= ['_R','_L']
 
-        metric = classification_eval_VAXI.main(evaluation_args) # AUC or F1
+            if args.mode =='CV':
+                evaluation_args['csv_true_column']= args.class_column
+
+
+            evaluation_args= Namespace(**evaluation_args)
+
+            metric = classification_eval_VAXI.main(evaluation_args) # AUC or F1
 
         if best_metric < metric:
             best_metric = metric
@@ -368,7 +425,7 @@ if __name__ == '__main__':
     parser.add_argument('--img_column', type=str, default='img', help='Name of image column')
     parser.add_argument('--class_column', type=str, default='Label', help='Name of class column')
     parser.add_argument('--seg_column', type=str, default=None, help='Name of segmentation column')
-    parser.add_argument('--nb_classes', type=int, default=6, help='Number of classes')
+    parser.add_argument('--nb_classes', type=int, default=4, help='Number of classes')
     parser.add_argument('--base_encoder', nargs="+", default='efficientnet-b0', help='Type of base encoder')
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
     parser.add_argument('--epochs', help='Max number of epochs', type=int, default=400)
@@ -397,7 +454,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', help='Seed', type=int, default=42)
 
     #mode
-    parser.add_argument('--mode', help='Mode for training', type=str, default='CV', choices=['CV', 'CV_2pred'])
+    parser.add_argument('--mode', help='Mode for training', type=str, default='CV', choices=['CV', 'CV_2pred', 'CV_2fclayer'])
 
     #Cross validation
     cv_group = parser.add_argument_group('Cross validation')

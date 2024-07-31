@@ -189,6 +189,12 @@ def rocAUC():
     auc = roc_auc_score(targets[:,2], preds_soft[:,2], average='macro',multi_class='ovr')
     print('AUC',auc)
 
+def test_printColor():
+    printRed('This is red')
+
+    x=15
+    printRed('This is red with object:',x)
+    print('Now the color is back to black')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Dataset information')
@@ -196,4 +202,4 @@ if __name__ == "__main__":
     parser.add_argument('--class_column', type=str, default='Classification', help='Name of class column')
     args = parser.parse_args()
 
-    test_vector()
+    test_printColor()

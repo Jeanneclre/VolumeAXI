@@ -3,7 +3,7 @@ import shutil
 import argparse
 
 '''
-Script to regroup all the scans files in the same folder.
+Script to group all the scans files in the same folder.
 Practical to count and preprocess the scans.
 
 '''

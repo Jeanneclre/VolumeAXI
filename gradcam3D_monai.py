@@ -2,12 +2,13 @@ import os
 import SimpleITK as sitk
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 import monai
 from monai.visualize import GradCAM
 import matplotlib.pyplot as plt
 
-from nets.classification import Net
+from nets.classification import Net, NetTarget
 from transforms.volumetric import EvalTransforms
 
 import cv2
@@ -15,8 +16,10 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 
-from loaders.cleft_dataset import BasicDataset
+from loaders.dataset import BasicDataset
 from useful_readibility import printBlue, printRed, printGreen
+
+from network_for_gradcam import RightModel, LeftModel
 
 """
 Script to visualize Grad-CAM for 3D images using MONAI library.
@@ -42,10 +45,28 @@ class CustomDataset(Dataset):
         label = 0  #default, can't be used in this case
         return img_tensor, label
 
+class SingleOutputModel(nn.Module):
+    def __init__(self, model, side='right'):
+        super(SingleOutputModel, self).__init__()
+        self.model = model
+        self.side = side
+
+    def forward(self, x):
+        retR, retL = self.model(x)
+        if self.side == 'right':
+            return retR
+        else:
+            return retL
+
 # Grad-CAM function
-def grad_cam(batch, model, target_layer,class_index=1):
+def grad_cam(batch, model, target_layer,class_index=1,side=None):
+    # if side is not None:
+    #     model_to_use = SingleOutputModel(model,side)
+    # else:
+    #     model_to_use = model
+
     grad_cam = monai.visualize.GradCAM(nn_module=model, target_layers=target_layer)
-    cam = grad_cam(batch, class_idx=class_index)  # Example for class index 1
+    cam = grad_cam(batch, class_idx=class_index)
     return cam
 
 # Function to blend two SimpleITK images with a specified alpha
@@ -136,10 +157,10 @@ def plot_gradcam(image1, image2,image3, slice_index,cam_save_dir, class_index, p
     plt.savefig(f'{cam_save_dir}/{patient_name}_classIdx_{class_index}_slice_{slice_index}.png')
     plt.close()
 
-def get_cam_sum(data,model,class_index, layers):
+def get_cam_sum(data,model,class_index, layers,side=None):
     cam_sum =0
     for layer in layers:
-        cam = grad_cam(data, model, layer, class_index)
+        cam = grad_cam(data, model, layer, class_index,side)
 
         cam_np = cam.squeeze().detach().cpu().numpy()
 
@@ -154,6 +175,7 @@ def get_cam_sum(data,model,class_index, layers):
     cam_normalized = (cam_np - cam_min) / (cam_max - cam_min)
 
     return cam_normalized,cam_sum_norm
+
 
 
 def main(args):
@@ -198,14 +220,33 @@ def main(args):
     if 'loss.weight' in checkpoint['state_dict']:
         del checkpoint['state_dict']['loss.weight']
 
-    model = Net(
-        args = checkpoint.get('args'),
-        class_weights=checkpoint.get('class_weights'),
-        base_encoder=args.base_encoder,
-        num_classes=nb_of_classes
-    ).cuda()
-    model.load_state_dict(checkpoint['state_dict'])
+    print("checkpoint.get('class_weights'):", checkpoint.get('class_weights'))
+    if args.side=='right':
+        model = RightModel(
+            args = checkpoint.get('args'),
+            class_weights=checkpoint.get('class_weights'),
+            base_encoder=args.base_encoder,
+            num_classes=nb_of_classes
+        ).cuda()
+    if args.side=='left':
+        model = LeftModel(
+            args = checkpoint.get('args'),
+            class_weights=checkpoint.get('class_weights'),
+            base_encoder=args.base_encoder,
+            num_classes=nb_of_classes
+        ).cuda()
+    else:
+        model = NetTarget(
+            args = checkpoint.get('args'),
+            class_weights=checkpoint.get('class_weights'),
+            base_encoder=args.base_encoder,
+            num_classes=nb_of_classes
+        ).cuda()
+
+    model.load_state_dict(checkpoint['state_dict'],strict=False)
     model.eval()
+
+
 
     # if data_loader has not 2 values to unpack, add one
     if args.img_path is not None:
@@ -223,7 +264,7 @@ def main(args):
         printBlue(f'Batch: {batch}')
         data= X.cuda()
         cam_normalized,cam_sum_norm=0,0
-        cam_normalized, cam_sum_norm = get_cam_sum(data,model,class_index,layer_name)
+        cam_normalized, cam_sum_norm = get_cam_sum(data,model,class_index,layer_name,args.side)
         original_img_np= data.squeeze().detach().cpu().numpy()
 
 
@@ -297,9 +338,11 @@ if __name__== "__main__":
     parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="./")
     parser.add_argument('--out', help='Output folder with vizualisation files', type=str, default="./GRADCAM")
 
+    # parser.add_argument('--mode', help='Mode of the model', type=str, default='CV_2fc', choices=[None,'CV_2fc'])
+    parser.add_argument('--side', help='Side of the model', type=str, default=None, choices=[None,'right','left'])
 
     parser.add_argument('--img_size', help='Image size of the dataset', type=int, default=224)
-    parser.add_argument('--nb_class', help='Number of classes', type=int, default=3)
+    parser.add_argument('--nb_class', help='Number of classes', type=int, default=4)
     parser.add_argument('--class_index', help='Class index for GradCAM', type=int, default=1)
 
     parser.add_argument('--base_encoder', type=str, default="DenseNet201", help='Type of base encoder')
