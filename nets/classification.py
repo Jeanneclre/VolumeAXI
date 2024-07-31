@@ -173,25 +173,26 @@ class CustomLossTarget(torch.nn.Module):
             # left_false_positive = True if (prediction_vector[j, :3].sum() > 0) & (targets[j, :3].sum() == 0) else False
             # right_false_positive = True if (prediction_vector[j, 3:].sum() > 0) & (targets[j, 3:].sum() == 0) else False
 
-            # If there is no prediction for an existing canine, penalize
-            left_false_negative = True if (prediction_vector[j, :3].sum() == 0) & (targets[:, :3].sum() > 0) else False
-            right_false_negative = True if (prediction_vector[:, 3:].sum() == 0) & (targets[:, 3:].sum() > 0) else False
+            # # If there is no prediction for an existing canine, penalize
+            # left_false_negative = True if (prediction_vector[j, :3].sum() == 0) & (targets[:, :3].sum() > 0) else False
+            # right_false_negative = True if (prediction_vector[:, 3:].sum() == 0) & (targets[:, 3:].sum() > 0) else False
 
-            # if (left_false_positive or right_false_positive) or (left_false_positive and right_false_positive):
-            #     penalty_fp +=1
-            if left_false_negative or right_false_negative:
-                penalty_fn +=1
+            # # if (left_false_positive or right_false_positive) or (left_false_positive and right_false_positive):
+            # #     penalty_fp +=1
+            # if left_false_negative or right_false_negative:
+            #     penalty_fn +=1
 
             # # penalize if it predicts a class 2 (resp 5) when it's a class 0 (resp 3) and vice versa
-            # if (prediction_vector[j, 0] == 1 and targets[j, 2] == 1) or (prediction_vector[j, 2] == 1 and targets[j, 0] == 1):
-            #     penalty_class+=0.5
-            # if (prediction_vector[j, 3] == 1 and targets[j, 5] == 1) or (prediction_vector[j, 5] == 1 and targets[j, 3] == 1):
-            #     penalty_class+=0.5
+            # To change according to the number of classes
+            if (prediction_vector[j, 1] == 1 and targets[j, 3] == 1) or (prediction_vector[j, 3] == 1 and targets[j, 1] == 1):
+                penalty_class+=0.5
+            if (prediction_vector[j, 5] == 1 and targets[j, 7] == 1) or (prediction_vector[j, 7] == 1 and targets[j, 5] == 1):
+                penalty_class+=0.5
 
 
 
-        print('preds_sig',preds_sig)
-        printBlue(f'targets {targets}')
+        # print('preds_sig',preds_sig)
+        # printBlue(f'targets {targets}')
 
         penalty = penalty_weight * (penalty_fp + penalty_fn + penalty_class-penalty_bonus)
         # penalty = penalty_weight * penalty_fn
@@ -200,8 +201,91 @@ class CustomLossTarget(torch.nn.Module):
         total_loss = base_loss + penalty
         return total_loss
 
+class NetFC(pl.LightningModule):
+    def __init__(self, args = None, class_weights=None, base_encoder="DenseNet",seed=42,num_classesR=4,num_classesL=4,num_classes= 4):
+        super(NetFC, self).__init__()
+
+        self.save_hyperparameters()
+        self.args = args
+        self._set_seed(seed)
+        self.class_weights = class_weights
+
+
+        if(class_weights is not None):
+            class_weights = torch.tensor(class_weights).to(torch.float32)
+
+        # self.loss = CustomLossTarget(penalty_weight=0.1,class_weights=class_weights)
+        self.loss = nn.CrossEntropyLoss(weight=class_weights)
+        self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.hparams.num_classes)
+        self.softmax = nn.Softmax(dim=1)
+
+        if self.hparams.base_encoder == 'DenseNet':
+            self.model = monai.networks.nets.DenseNet(spatial_dims=3, in_channels=1,out_channels=512)
+        if self.hparams.base_encoder == 'DenseNet169':
+            self.model = monai.networks.nets.DenseNet169(spatial_dims=3, in_channels=1,out_channels=512)
+        if self.hparams.base_encoder == 'DenseNet201':
+            self.model = monai.networks.nets.DenseNet201(spatial_dims=3, in_channels=1,out_channels=512)
+        if self.hparams.base_encoder == 'DenseNet264':
+            self.model = monai.networks.nets.DenseNet264(spatial_dims=3, in_channels=1,out_channels=512)
+
+        if self.hparams.base_encoder == 'SEResNet50':
+            self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=1, num_classes=512)
+        # elif self.hparams.base_encoder == 'ResNet':
+        #     self.model = monai.networks.nets.ResNet(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
+        elif self.hparams.base_encoder == 'resnet18' or base_encoder=='ResNet':
+           self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=512)
+        if base_encoder == 'efficientnet-b0' or base_encoder == 'efficientnet-b1' or base_encoder == 'efficientnet-b2' or base_encoder == 'efficientnet-b3' or base_encoder == 'efficientnet-b4' or base_encoder == 'efficientnet-b5' or base_encoder == 'efficientnet-b6' or base_encoder == 'efficientnet-b7' or base_encoder == 'efficientnet-b8':
+           self.model = monai.networks.nets.EfficientNetBN(base_encoder, spatial_dims=3, in_channels=1, num_classes=512)
+
+        self.fcr = nn.Linear(512, self.hparams.num_classesR)
+        self.fcl = nn.Linear(512, self.hparams.num_classesL)
+
+    def _set_seed(self, seed):
+        torch.manual_seed(seed)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.args.lr)
+        return optimizer
+
+    def forward(self, x):
+        ret =self.model(x)
+        retR = self.fcr(ret)
+        retL = self.fcl(ret)
+
+        return retR, retL
+
+    def training_step(self, train_batch, batch_idx):
+        x, y1, y2 = train_batch
+        x1,x2 = self(x)
+
+        loss1 = self.loss(x1, y1)
+        loss2 = self.loss(x2, y2)
+        loss = loss1 + loss2
+
+        acc1 =self.accuracy(x1, y1)
+        acc2= self.accuracy(x2, y2)
+        acc = (acc1+acc2)/2
+        self.log("train_acc", acc)
+
+        return loss
+
+    def validation_step(self, val_batch, batch_idx):
+        x, y1,y2 = val_batch
+        x1,x2= self(x)
+
+        loss1 = self.loss(x1, y1)
+        loss2 = self.loss(x2, y2)
+        loss = loss1 + loss2
+        self.log('val_loss', loss)
+
+        acc1 =self.accuracy(x1, y1)
+        acc2= self.accuracy(x2, y2)
+        acc = (acc1+acc2)/2
+        self.log("val_acc", acc)
+
+
 class NetTarget(pl.LightningModule):
-    def __init__(self, args = None, class_weights=None, base_encoder="DenseNet",seed=42,num_classes=6):
+    def __init__(self, args = None, class_weights=None, base_encoder="DenseNet",seed=42,num_classes= 4):
         super(NetTarget, self).__init__()
 
         self.save_hyperparameters()
@@ -209,11 +293,14 @@ class NetTarget(pl.LightningModule):
         self._set_seed(seed)
         self.class_weights = class_weights
 
+
         if(class_weights is not None):
             class_weights = torch.tensor(class_weights).to(torch.float32)
 
-        self.loss = CustomLossTarget(penalty_weight=0.1,class_weights=class_weights)
+        # self.loss = CustomLossTarget(penalty_weight=0.1,class_weights=class_weights)
+        self.loss = nn.CrossEntropyLoss(weight=class_weights)
         self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=self.hparams.num_classes)
+        self.softmax = nn.Softmax(dim=1)
 
         if self.hparams.base_encoder == 'DenseNet':
             self.model = monai.networks.nets.DenseNet(spatial_dims=3, in_channels=1,out_channels=self.hparams.num_classes)
@@ -226,12 +313,13 @@ class NetTarget(pl.LightningModule):
 
         if self.hparams.base_encoder == 'SEResNet50':
             self.model = monai.networks.nets.SEResNet50(spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
-        # elif self.hparams.base_encoder == 'ResNet':
-        #     self.model = monai.networks.nets.ResNet(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
+
         elif self.hparams.base_encoder == 'resnet18' or base_encoder=='ResNet':
            self.model = monai.networks.nets.resnet18(spatial_dims=3, n_input_channels=1, num_classes=self.hparams.num_classes)
         if base_encoder == 'efficientnet-b0' or base_encoder == 'efficientnet-b1' or base_encoder == 'efficientnet-b2' or base_encoder == 'efficientnet-b3' or base_encoder == 'efficientnet-b4' or base_encoder == 'efficientnet-b5' or base_encoder == 'efficientnet-b6' or base_encoder == 'efficientnet-b7' or base_encoder == 'efficientnet-b8':
            self.model = monai.networks.nets.EfficientNetBN(base_encoder, spatial_dims=3, in_channels=1, num_classes=self.hparams.num_classes)
+
+
 
     def _set_seed(self, seed):
         torch.manual_seed(seed)
@@ -241,8 +329,7 @@ class NetTarget(pl.LightningModule):
         return optimizer
 
     def forward(self, x):
-        ret =self.model(x)
-        return ret
+        return self.model(x)
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
@@ -250,21 +337,24 @@ class NetTarget(pl.LightningModule):
 
         loss = self.loss(x, y)
         self.log('train_loss', loss)
+        acc =self.accuracy(x, y)
 
-        self.accuracy(x, y)
-        self.log("train_acc", self.accuracy)
+        self.log("train_acc", acc)
 
         return loss
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        x = self(x)
+        x= self(x)
 
-        loss = self.loss(x, y)
-        self.log('val_loss', loss, sync_dist=True)
+        loss= self.loss(x, y)
 
-        self.accuracy(x, y)
-        self.log("val_acc", self.accuracy)
+        self.log('val_loss', loss)
+
+        acc =self.accuracy(x, y)
+        self.log("val_acc", acc)
+
+
 
 class Net(pl.LightningModule):
     def __init__(self, args = None, class_weights=None, base_encoder="efficientnet-b0", seed = 42,num_classes=3):

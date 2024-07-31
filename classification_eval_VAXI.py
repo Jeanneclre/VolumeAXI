@@ -42,6 +42,7 @@ def plot_confusion_matrix(cm, classes,normalize=False,title='Confusion matrix',c
     plt.imshow(cm, interpolation='nearest', cmap=cmap, aspect='auto')
     plt.title(title)
     plt.colorbar()
+    print('len classes:',len(classes))
     tick_marks = np.arange(len(classes))
     plt.xticks(tick_marks, classes, rotation=45)
     plt.yticks(tick_marks, classes)
@@ -97,6 +98,7 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
         os.makedirs(output_dir)
 
     class_names = pd.unique(df[args.csv_true_column])
+    class_names =[int(x) for x in class_names if str(x) != 'nan']
     class_names.sort()
     print("Class names:", class_names)
 
@@ -134,6 +136,7 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
 
       with open(probs_fn, 'rb') as f:
         y_scores = pickle.load(f)
+        y_scores = y_scores[:,:4]
 
       y_onehot = pd.get_dummies(y_true_arr)
 
@@ -146,59 +149,59 @@ def classification_eval(df, args, y_true_arr, y_pred_arr):
       supports = []
       aucs = []
       for i in range(y_scores.shape[1]):
+        y_true = y_onehot.iloc[:, i]
+        y_score = y_scores[:, i]
 
-          y_true = y_onehot.iloc[:, i]
-          y_score = y_scores[:, i]
+        fpr, tpr= roc_curve(y_true, y_score)[:2]
+        auc_score = roc_auc_score(y_true, y_score)
+        aucs.append(auc_score)
+        #add AUC value to the report
+        report_key = list(report.keys())[i]
+        support_class = report[report_key].pop("support")
+        report[report_key]["auc"] = auc_score
+        report[report_key]['accuracy'] = ''
 
-          fpr, tpr= roc_curve(y_true, y_score)[:2]
-          auc_score = roc_auc_score(y_true, y_score)
-          aucs.append(auc_score)
-          #add AUC value to the report
-          support_class = report[str(i)].pop("support")
-          report[str(i)]["auc"] = auc_score
-          report[str(i)]['accuracy'] = ''
+        #moove support after auc column
+        report[report_key]["support"] = int(support_class)
 
-          #moove support after auc column
-          report[str(i)]["support"] = int(support_class)
-
-          supports.append(report.get(str(i), {}).get("support", 0))
+        supports.append(report.get(str(i), {}).get("support", 0))
 
 
-          plt.plot(fpr, tpr, label=f"{y_onehot.columns[i]} (AUC={auc_score:.2f})")
+        plt.plot(fpr, tpr, label=f"{y_onehot.columns[i]} (AUC={auc_score:.2f})")
 
-      plt.xlabel('False Positive Rate')
-      plt.ylabel('True Positive Rate')
-      plt.title('ROC Curves')
-      plt.legend()
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curves')
+    plt.legend()
 
-      fname = os.path.splitext(args.out)[0] + "_roc.png"
-      roc_filename = os.path.join(output_dir, fname)
-      plt.savefig(roc_filename)
-      plt.close()
+    fname = os.path.splitext(args.out)[0] + "_roc.png"
+    roc_filename = os.path.join(output_dir, fname)
+    plt.savefig(roc_filename)
+    plt.close()
 
-      support = np.array(supports)
-      auc = np.array(aucs)
+    support = np.array(supports)
+    auc = np.array(aucs)
 
-      if np.sum(support) != 0:
-          report["weighted avg"]["auc"] = np.average(auc, weights=support)
+    if np.sum(support) != 0:
+        report["weighted avg"]["auc"] = np.average(auc, weights=support)
 
-      else:
-          report["weighted avg"]["auc"] = 0
+    else:
+        report["weighted avg"]["auc"] = 0
 
-      df_report = pd.DataFrame(report).transpose()
+    df_report = pd.DataFrame(report).transpose()
 
-      df_report.loc['accuracy'] = ''
+    df_report.loc['accuracy'] = ''
 
-      df_report.loc['accuracy','accuracy']=report['accuracy']
-      df_report.loc['accuracy','support']= df_report.loc['weighted avg','support']
+    df_report.loc['accuracy','accuracy']=report['accuracy']
+    df_report.loc['accuracy','support']= df_report.loc['weighted avg','support']
 
-      fn = os.path.splitext(args.out)[0] + "_classification_report.csv"
-      report_filename = os.path.join(output_dir, fn)
-      df_report.to_csv(report_filename)
+    fn = os.path.splitext(args.out)[0] + "_classification_report.csv"
+    report_filename = os.path.join(output_dir, fn)
+    df_report.to_csv(report_filename)
 
-      # Extraction of the score (AUC or F1)
-      score = choose_score(args,report)
-      return score
+    # Extraction of the score (AUC or F1)
+    score = choose_score(args,report)
+    return score
 
 
 def ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr):
@@ -240,6 +243,8 @@ def ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr):
   class_names = [x for x in class_names if str(x) != 'nan']
   class_names.sort()
 
+  #make sure it's integers
+  class_names = [int(x) for x in class_names]
 
   print("Class names:", class_names)
   # Count false predictions (case where the true label is None and the prediction is not None)
@@ -248,11 +253,13 @@ def ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr):
   # Count wrong predictions (case where the true label is not None and the prediction is None)
   fail_wp_R=0
   fail_wp_L=0
+
+  #First we fill the y_true_arr and y_pred_arr with the values of the first column
   for idx,row in df.iterrows():
     if str(row[column1_nm]) != 'nan' and str(row[pred1_nm]) != 'nan':
 
-      y_true_arr.append(str(row[column1_nm]))
-      y_pred_arr.append(str(row[pred1_nm]))
+      y_true_arr.append(str(int(row[column1_nm])))
+      y_pred_arr.append(str(int(row[pred1_nm])))
     elif str(row[column1_nm]) !='nan' and str(row[pred1_nm]) == 'nan':
       fail_wp_R+=1
     elif str(row[column1_nm])=='nan' and str(row[pred1_nm]) != 'nan':
@@ -260,11 +267,11 @@ def ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr):
     else:
       pass
 
-
+  #Then we fill the y_true_arr and y_pred_arr with the values of the second column
   for idx,row in df.iterrows():
     if str(row[column2_nm]) != 'nan' and str(row[pred2_nm]) != 'nan':
-      y_true_arr.append(str(row[column2_nm]))
-      y_pred_arr.append(str(row[pred2_nm]))
+      y_true_arr.append(str(int(row[column2_nm])))
+      y_pred_arr.append(str(int(row[pred2_nm])))
     elif str(row[column2_nm]) !='nan' and str(row[pred2_nm]) == 'nan':
       fail_wp_L+=1
     elif str(row[column2_nm])=='nan' and str(row[pred2_nm]) != 'nan':
@@ -272,9 +279,11 @@ def ClassificationMultiLabel_eval(df, args, y_true_arr, y_pred_arr):
     else:
       pass
 
+
   report = classification_report(y_true_arr, y_pred_arr, output_dict=True, zero_division=1)
 
   cnf_matrix = confusion_matrix(y_true_arr, y_pred_arr)
+
   np.set_printoptions(precision=3)
 
   # Plot non-normalized confusion matrix

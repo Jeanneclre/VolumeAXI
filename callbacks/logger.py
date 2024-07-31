@@ -37,7 +37,7 @@ def tensorboard_neptune_logger(args):
         print('[DEBUG] USING NEPTUNE LOGGER')
         logger = NeptuneLogger(project=args.neptune_project, tags=args.neptune_tag, api_key=os.environ["NEPTUNE_API_TOKEN"])
         if args.seg_column is None:
-            image_logger = ImageLoggerNeptune(log_steps=args.log_every_n_steps)
+            image_logger = ImageLoggerNeptune(log_steps=args.log_every_n_steps, mode= args.mode)
         else:
             print('Neptune logger not implemented for segmentation')
 
@@ -46,19 +46,26 @@ def tensorboard_neptune_logger(args):
     if image_logger is None:
         raise ValueError("No image logger specified. Please specify either ImageLogger or ImageLoggerNeptune")
 
+    print('[DEBUG] logger:', logger)
+    print('[DEBUG] image_logger:', image_logger)
     return logger, image_logger
 
 class ImageLoggerNeptune(Callback):
-    def __init__(self, num_images=4, log_steps=10):
+    def __init__(self, num_images=4, log_steps=10,mode='CV'):
         self.log_steps = log_steps
         self.num_images = num_images
         self.idx =0
+        self.modelType = mode
 
     def on_train_batch_end(self, trainer, pl_module, output, batch, batch_idx):
+
         if batch_idx % self.log_steps == 0:
             # print(f"[DEBUG] on_train_batch_end: batch_idx={batch_idx}")
             try:
-                x, y = batch
+                if self.modelType == 'CV_2fclayer':
+                    x, y, y2= batch
+                else:
+                    x,y = batch
                 # print('[DEBUG] x type:', type(x), 'x shape:', x.shape)
                 # num_images = min(self.num_images, x.shape[0])
                 with torch.no_grad():
@@ -128,7 +135,8 @@ class ImageLogger(Callback):
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, unused=0):
 
         if batch_idx % self.log_steps == 0:
-            x, y = batch
+
+            x, y,y2 = batch
 
             x = torch.permute(x[0], (1, 0, 2, 3)) # get the first image in the batch and permute the channels dimension with i dimension, leave j, k dimensions.
             x = x - torch.min(x)

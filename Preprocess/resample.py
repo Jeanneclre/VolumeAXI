@@ -20,7 +20,7 @@ def resample_image_with_custom_size(img,segmentation, args):
 
     label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
     label_shape_filter.Execute(segmentation)
-    bounding_box = label_shape_filter.GetBoundingBox(1)  # Assuming label of interest is 1
+    bounding_box = label_shape_filter.GetBoundingBox(1)
 
     print('bounding box:', bounding_box)
 
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     transform_group.add_argument('--center', type=bool, help='Center the image in the space', default=True)
     transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=False)
     transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=True)
-    transform_group.add_argument('--crop', type=bool, help='Only Crop the image to the segmentation (used only if args.segmentation is)', default=False)
+    transform_group.add_argument('--crop', type=bool, help='Only Crop the image to the segmentation (used only if args.segmentation is)', default=True)
 
     img_group = parser.add_argument_group('Image parameters')
     img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=3)

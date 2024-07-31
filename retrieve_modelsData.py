@@ -1,5 +1,5 @@
 import torch
-from nets.classification import Net
+from nets.classification import Net, NetTarget, NetFC
 
 # # # Load the entire checkpoint
 # # checkpoint = torch.load('Training_Left/SEResNet50/Models/epoch_200-val_loss_0.607.ckpt')
@@ -26,10 +26,11 @@ def main(args):
     checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
     print('checkpoint state dict:', checkpoint['state_dict'].keys())
     # If you just want to load the model weights into an existing model instance
-    model = Net()  # Ensure you instantiate your model with the appropriate arguments
-    model.load_from_checkpoint(checkpoint_path)
+    model = NetFC()  # Ensure you instantiate your model with the appropriate arguments
+    model.load_from_checkpoint(checkpoint_path, strict=False)
 
-    print('keys:',checkpoint.keys())
+    # print('keys:',checkpoint.keys())
+    print('model:', model)
 
     # Check if class weights are stored under a specific key
     if 'class_weights' in checkpoint:

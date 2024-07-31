@@ -41,7 +41,7 @@ def applyMask(image, mask, label,dilation_radius):
             binary_mask.CopyInformation(mask)
 
             # Define the structuring element for dilation
-            kernel = sitk.sitkBall
+            # kernel = sitk.sitkBall
             kernel=sitk.sitkBox
             radius = dilation_radius
             dilate_filter = sitk.BinaryDilateImageFilter()
@@ -87,8 +87,8 @@ def applyMask(image, mask, label,dilation_radius):
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser(description="Apply a mask to an image")
-    parser.add_argument("--img", help="Input image")
-    parser.add_argument("--mask", help="Input mask")
+    parser.add_argument("--dir", help="Inputs images")
+    parser.add_argument("--mask", help="Inputs masks")
     parser.add_argument("--label", nargs='+', help="Label to apply the mask. Ex: 1 or 1 2",required=True)
     parser.add_argument("--output", help="Output image")
     parser.add_argument("--dilatation_radius", type=int, help="Radius of the dilatation to apply to the mask",default=None)
@@ -105,18 +105,17 @@ if __name__== "__main__":
     # create a loop to match the mask with the image
     match_imgMask= []
 
-    for img in os.listdir(args.img):
+    for img in os.listdir(args.dir):
         for mask in os.listdir(args.mask):
             if img.split('_')[0] == mask.split('_')[0]:
 
                 for i in range(len(word_to_match)):
                     if word_to_match[i] in img and word_to_match[i] in mask:
-                        match_imgMask.append((os.path.join(args.img, img), os.path.join(args.mask, mask)))
+                        match_imgMask.append((os.path.join(args.dir, img), os.path.join(args.mask, mask)))
                         break
 
                 if (word_to_match[0] not in img and word_to_match[0] not in mask) and (word_to_match[1] not in img or word_to_match[1] not in mask):
-                    match_imgMask.append((os.path.join(args.img, img), os.path.join(args.mask, mask)))
-
+                    match_imgMask.append((os.path.join(args.dir, img), os.path.join(args.mask, mask)))
 
 
     for img_path, mask_path in match_imgMask:

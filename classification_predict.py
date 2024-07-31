@@ -8,8 +8,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from nets.classification import Net
-from loaders.cleft_dataset import BasicDataset, Datasetarget
+from nets.classification import Net, NetTarget, NetFC
+from loaders.dataset import BasicDataset, Datasetarget, DatasetFC
 from transforms.volumetric import EvalTransforms, SegEvalTransforms, NoEvalTransform
 from callbacks.logger import ImageLogger
 
@@ -51,6 +51,71 @@ def add_roc_curve(probs, truths, class_idx):
     roc_auc = auc(fpr, tpr)
     plt.plot(fpr, tpr, lw=2, label=f'Class {class_idx} (AUC = {roc_auc:.2f})')
 
+def MultiBranchPred(args):
+    '''
+    Prediction function for 2 class columns and 2 branches in the model (one for each column).
+    '''
+    model = NetFC(seed=args.seed).load_from_checkpoint(args.model)
+    model.eval()
+    model.cuda()
+
+
+    if (os.path.splitext(args.csv)[1] == ".csv"):
+        df_train = pd.read_csv(args.csv_train)
+        df_test = pd.read_csv(args.csv)
+    else:
+        df_train = pd.read_parquet(args.csv_train)
+        df_test = pd.read_parquet(args.csv)
+
+    print('nb_classes in MultiBranchPred',args.nb_classes)
+    test_ds = DatasetFC(df_test, mount_point=args.mount_point, img_column=args.img_column, class_column1=args.class_column1, class_column2=args.class_column2,nb_classes=args.nb_classes, transform=EvalTransforms(args.img_size))
+    test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, prefetch_factor=4)
+
+    with torch.no_grad():
+        predictions1 = []
+        predictions2 = []
+        probs = []
+        features = []
+        for idx, batch in tqdm(enumerate(test_loader), total=len(test_loader)):
+            X, Y1,Y2 = batch
+
+            X = X.cuda().contiguous()
+
+            pred1,pred2 = model(X)
+            pred_prob1 = torch.nn.functional.softmax(pred1, dim=1)
+            pred_prob2 = torch.nn.functional.softmax(pred2, dim=1)
+
+            prob_concat = torch.cat([pred_prob1, pred_prob2], dim=1)
+            probs.append(prob_concat.cpu().numpy())
+            predictions1.append(torch.argmax(pred1, dim=1).cpu().numpy())
+            predictions2.append(torch.argmax(pred2, dim=1).cpu().numpy())
+
+    pred_column1 = args.pred_column + args.diff[0]
+    pred_column2 = args.pred_column + args.diff[1]
+    df_test[pred_column1] = np.concatenate(predictions1, axis=0)
+    df_test[pred_column2] = np.concatenate(predictions2, axis=0)
+    probs = np.concatenate(probs, axis=0)
+
+    if not os.path.exists(args.out):
+        os.makedirs(args.out)
+
+    print('==== Classification report concat===')
+    concat_class = np.concatenate([df_test[args.class_column1], df_test[args.class_column2]], axis=0)
+    concat_pred = np.concatenate([df_test[pred_column1], df_test[pred_column2]], axis=0)
+    print(classification_report(concat_class, concat_pred))
+
+    ext = os.path.splitext(args.csv)[1]
+    if(ext == ".csv"):
+        df_test.to_csv(os.path.join(args.out, os.path.basename(args.csv).replace(".csv", "_prediction.csv")), index=False)
+    else:
+        df_test.to_parquet(os.path.join(args.out, os.path.basename(args.csv).replace(".parquet", "_prediction.parquet")), index=False)
+
+
+    pickle.dump(probs, open(os.path.join(args.out, os.path.basename(args.csv).replace(ext, "_probs.pickle")), 'wb'))
+
+    if len(features) > 0:
+        features = np.concatenate(features, axis=0)
+        pickle.dump(features, open(os.path.join(args.mount_point, args.out, os.path.basename(args.csv).replace(ext, "_prediction.pickle")), 'wb'))
 
 def MultiPred(args):
     '''
@@ -69,12 +134,12 @@ def MultiPred(args):
     idx 0 to 2 are for Label R and idx 3 to 5 are for Label L in the example.
     target vector = [0, 1, 0, 0, 1, 0] for the first row.
     '''
-    model = Net(seed=args.seed).load_from_checkpoint(args.model)
+    model = NetTarget(seed=args.seed).load_from_checkpoint(args.model)
     model.eval()
     model.cuda()
 
 
-    if(os.path.splitext(args.csv)[1] == ".csv"):
+    if (os.path.splitext(args.csv)[1] == ".csv"):
         df_train = pd.read_csv(args.csv_train)
         df_test = pd.read_csv(args.csv)
     else:
@@ -99,44 +164,59 @@ def MultiPred(args):
         for idx, batch in tqdm(enumerate(test_loader), total=len(test_loader)):
             X, Y = batch
             X = X.cuda().contiguous()
+
+
             if args.extract_features:
                 pred, x_f = model(X)
                 features.append(x_f.cpu().numpy())
             else:
                 pred = model(X)
-                pred_softmax = torch.nn.functional.softmax(pred, dim=1) #dim 0
+                demi_len = pred.shape[1]//2
+                pred_softmaxR = torch.nn.functional.softmax(pred[:,:demi_len], dim=1) #dim 0
+                pred_softmaxL = torch.nn.functional.softmax(pred[:,demi_len:], dim=1) #dim 1
                 pred_sigmoid = torch.nn.functional.sigmoid(pred)
-
-            demi_len = pred_sigmoid.shape[1]//2
 
             for j in range(pred_sigmoid.shape[0]):
 
                 noneR=0
                 noneL=0
 
-                best_probR,idxR = torch.max(pred_sigmoid[j,:demi_len],dim=0)
-                best_probL,idxL = torch.max(pred_sigmoid[j,demi_len:],dim=0)
+                # best_probR,idxR = torch.max(pred_sigmoid[j,:demi_len],dim=0)
+                # best_probL,idxL = torch.max(pred_sigmoid[j,demi_len:],dim=0)
+                best_probR,idxR = torch.max(pred_softmaxR[j,:],dim=0)
+                best_probL,idxL = torch.max(pred_softmaxL[j,:],dim=0)
 
-                if best_probR.item() > 0.6:
-                    predictionsR.append(idxR.item())
-                elif best_probR.item() <= 0.8:
-                    predictionsR.append(None)
-                    noneR=1
+                idxL = idxL.item() + demi_len
 
-                if best_probL.item() > 0.6:
-                    idxL = idxL.item() + demi_len
-                    predictionsL.append(idxL)
-                elif best_probL.item() <= 0.8 :
-                    predictionsL.append(None)
-                    noneL=1
+                predictionsR.append(idxR.item())
+                predictionsL.append(idxL)
+                # Code below is used in the case where there is not a class for non impacted canines
+                # if best_probR.item() > 0.7:
+                #     predictionsR.append(idxR.item())
+                # elif best_probR.item() <= 0.8:
+                #     predictionsR.append(None)
+                #     noneR=1
 
-                if noneR == 1 and noneL == 1:
-                    #get the highest probability and replace the None
-                    best_prob,idx = torch.max(pred_sigmoid[j,:],dim=0)
-                    if idx.item() < demi_len:
-                        predictionsR[-1] = idx.item()
-                    else:
-                        predictionsL[-1] = idx.item()
+
+                # if best_probL.item() > 0.7:
+                #     idxL = idxL.item() + demi_len
+                #     predictionsL.append(idxL)
+                # elif best_probL.item() <= 0.7 :
+                #     predictionsL.append(None)
+                #     noneL=1
+
+                # if noneR == 1 and noneL == 1:
+                #     #get the highest probability and replace the None
+                #     # best_prob,idx = torch.max(pred_sigmoid[j,:],dim=0)
+                #     if best_probR.item() > best_probL.item():
+                #         idx = idxR
+                #     else:
+                #         idx = idxL
+
+                #     if idx.item() < demi_len:
+                #         predictionsR[-1] = idx.item()
+                #     else:
+                #         predictionsL[-1] = idx.item()
 
 
                 #find label R and L from Y[j]
@@ -148,21 +228,28 @@ def MultiPred(args):
                     #when 2 classes are given, target_vector has 2 values of 0.5 so we need to change the value to 1
                     trueR_value = [value*2 for value in target_lst[:demi_len]]
                     trueR.append(trueR_value)
-                    probR.append(pred_softmax[j,:demi_len].cpu().numpy())
+                    # probR.append(pred_softmax[j,:demi_len].cpu().numpy())
+                    probR.append(pred_softmaxR[j,:].cpu().numpy())
 
                     trueL_value = [value*2 for value in target_lst[demi_len:]]
                     trueL.append(trueL_value)
-                    probL.append(pred_softmax[j,demi_len:].cpu().numpy())
+                    # probL.append(pred_softmax[j,demi_len:].cpu().numpy())
+                    probL.append(pred_softmaxL[j,:].cpu().numpy())
                 else:
                     if idx_non_zero_target[0] < demi_len:
                         trueR.append(target_lst[:demi_len])
-                        probR.append(pred_softmax[j,:demi_len].cpu().numpy())
+                        # probR.append(pred_softmax[j,:demi_len].cpu().numpy())
+                        probR.append(pred_softmaxR[j,:].cpu().numpy())
                     else:
                         trueL.append(target_lst[demi_len:])
-                        probL.append(pred_softmax[j,demi_len:].cpu().numpy())
+                        # probL.append(pred_softmax[j,demi_len:].cpu().numpy())
+                        probL.append(pred_softmaxL[j,:].cpu().numpy())
 
                 probs_sig.append(pred_sigmoid[j,:].cpu().numpy())
-                probs_softmax.append(pred_softmax[j,:].cpu().numpy())
+                # probs_softmax.append(pred_softmax[j,:].cpu().numpy())
+                concat_softmax = torch.cat([pred_softmaxR[j,:],pred_softmaxL[j,:]],dim=0)
+                probs_softmax.append(concat_softmax.cpu().numpy())
+
                 predictions_model.append(pred[j,:].cpu().numpy())
 
 
@@ -177,6 +264,7 @@ def MultiPred(args):
     df_test[predR_column] = predictionsR
     df_test[predL_column] = predictionsL
     output_dir =args.out
+
 
     df_test['Prob sigmoid'] = probs_sig
     df_test['Prob softmax'] = probs_softmax
@@ -270,7 +358,6 @@ def NormalPred(args):
     model.eval()
     model.cuda()
 
-
     if(os.path.splitext(args.csv)[1] == ".csv"):
         df_train = pd.read_csv(args.csv_train)
         df_test = pd.read_csv(args.csv)
@@ -358,6 +445,8 @@ def main(args):
         MultiPred(args)
     elif args.mode == 'CV':
         NormalPred(args)
+    elif args.mode =="CV_2fclayer":
+        MultiBranchPred(args)
 
 def get_argparse():
     parser = argparse.ArgumentParser(description='Classification predict')
@@ -380,8 +469,8 @@ def get_argparse():
 
     parser.add_argument('--seed', help='Seed for reproducibility', type=int, default=42)
 
-    parser.add_argument('--mode', type=str, help='Mode used for the model', default='CV', choices=['CV', 'CV_2pred'])
-    # target vector prediction
+    parser.add_argument('--mode', type=str, help='Mode used for the model', default='CV', choices=['CV', 'CV_2pred', 'CV_2fclayer'])
+    # Use the next parameters for modes CV_2pred and CV_2fclayer (when 2 columns of predicitons are used in the csv file)
     parser.add_argument('--nb_classes', help='Number of classes', type=int, default=6)
     parser.add_argument('--class_column1', type=str, help='Column name in the csv file with classes', default="Label_R")
     parser.add_argument('--class_column2', type=str, help='Column name in the csv file with classes', default="Label_L")

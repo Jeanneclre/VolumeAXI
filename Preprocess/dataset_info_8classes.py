@@ -85,12 +85,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # Classification of the position
-    # dict_classes = {
-    #     "Buccal": 0,
-    #     "Bicortical":1,
-    #     "Palatal": 2,
-    #     "nan": '' ,
-    # }
+    dict_classes = {
+        "nan":0, #non impacted
+        "Buccal":1,
+        "Bicortical":2,
+        "Palatal": 3,
+    }
 
     # Classification No Damage (0) /Damage (1)
     # dict_classes = {
@@ -117,10 +117,10 @@ if __name__ == "__main__":
     # }
 
     # dict_classes = {
-    #     10: 4,
-    #     3: 5,
-    #     4: 6,
-    #     5: 7,
+    #     10: 0,
+    #     3: 1,
+    #     4: 2,
+    #     5: 3,
     # }
     classes = count_classes(args.input,args.class_column,dict_classes)
     print(classes)
